@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import time
 
 TIME_INTERVAL = 10 * 60
+START_DATE = datetime(2021, 5, 4)
 
 class PoolDataFetcher:
     def __init__(self) -> None:
@@ -17,8 +18,8 @@ class PoolDataFetcher:
         """
         last_time_range = self.db_manager.fetch_last_time_range()
         if last_time_range == None:
-            start = datetime(2021, 5, 4)
-            end = datetime(2021, 5, 5)
+            start = START_DATE
+            end = START_DATE + timedelta(days=1)
         else:
             start = last_time_range["end"]
             end = last_time_range["end"] + timedelta(days=1)
@@ -35,20 +36,6 @@ class PoolDataFetcher:
         self.db_manager.add_token_pairs(token_pairs)
         
         return {'start' : start, 'end' : end}
-    
-    def get_time_range(self) -> tuple[datetime, datetime]:
-        """
-        Get the time range to fetch.
-
-        Returns:
-            The time range to fetch.
-        """
-        incompleted_time_range = self.db_manager.fetch_incompleted_time_range()
-        
-        if not incompleted_time_range:
-            return self.add_new_time_range()
-        else:
-            return incompleted_time_range[0]["start"], incompleted_time_range[0]["end"]
     
     def get_token_pairs(self, start: datetime, end: datetime) -> list[dict[str, str]]:
         """
@@ -76,20 +63,11 @@ class PoolDataFetcher:
             prob: The token_pair and datetime to fetch.
             answer: The fetched data from rpc node.
         """
-        token_pairs = prob.get("token_pairs", None)
-        start_datetime = prob.get("start_datetime", None)
-        end_datetime = prob.get("end_datetime", None)
-        
+        token_pairs = prob.get("token_pairs", None)        
         miner_data = answer.get("data", None)
         
-        self.db_manager.add_pool_data(miner_data)
-        
+        self.db_manager.add_pool_data(miner_data)        
         self.db_manager.mark_token_pairs_as_complete(token_pairs)
-        
-        token_pairs = self.db_manager.fetch_incompleted_token_pairs()
-        
-        if not token_pairs:
-            self.db_manager.mark_time_range_as_complete(start_datetime, end_datetime)
 
     def get_next_token_pairs(self, time_range: dict) -> dict:
         """
@@ -111,6 +89,7 @@ class PoolDataFetcher:
         return {"token_pairs": req_token_pairs, "start_datetime": start_datetime, "end_datetime": end_datetime}
 
     def process_time_range(self, time_range: dict):
+        print(f'Processing time range {time_range.values()}')
         prob = self.get_next_token_pairs(time_range)
         answer = self.pool_data_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'], '1h')
         
@@ -134,13 +113,14 @@ class PoolDataFetcher:
                     time.sleep(TIME_INTERVAL)
                     
                     now = datetime.now()
+                    if now > time_range['end']:
+                        now = time_range['end']
+                    
                     new_time_range = {'start': prev, 'end': now}
                     self.process_time_range(new_time_range)
                     
                     prev = now
-        
     
-
 if __name__ == '__main__':
     pool_data_fetcher = PoolDataFetcher()
     pool_data_fetcher.run()
