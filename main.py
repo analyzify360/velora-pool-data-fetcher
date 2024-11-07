@@ -26,9 +26,9 @@ class PoolDataFetcher:
         
         self.db_manager.add_timetable_entry(start, end)
         
-        print(f"Fetching token pairs between {start} {(start.timestamp())} and {end} {(end.timestamp())}")
+        print(f"Fetching token pairs between {start} {int(start.timestamp())} and {end} {int(end.timestamp())}")
         
-        token_pairs = self.uniswap_fetcher.get_pool_created_events_between_two_timestamps(start.timestamp(), end.timestamp())
+        token_pairs = self.uniswap_fetcher.get_pool_created_events_between_two_timestamps(int(start.timestamp()), int(end.timestamp()))
         self.db_manager.reset_token_pairs()
         self.db_manager.add_token_pairs(token_pairs)
         
@@ -82,7 +82,7 @@ class PoolDataFetcher:
         for token_pair in token_pairs:
             req_token_pairs.append((token_pair['token0'], token_pair['token1'], token_pair['fee']))
 
-        return {"token_pairs": req_token_pairs, "start_datetime": time_range[0].timestamp(), "end_datetime": time_range[1].timestamp()}
+        return {"token_pairs": req_token_pairs, "start_datetime": int(time_range['start'].timestamp()), "end_datetime": int(time_range['end'].timestamp())}
 
     def process_time_range(self, time_range: dict):
         print(f'Processing time range between {time_range["start"]} and {time_range["end"]}')
