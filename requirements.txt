@@ -1,2 +1,4 @@
 pool-data-fetcher
 sqlalchemy
+python-dotenv
+psycopg2
