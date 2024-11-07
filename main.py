@@ -36,8 +36,8 @@ class PoolDataFetcher:
         self.db_manager.add_token_pairs(token_pairs)
         
         return {'start' : start, 'end' : end}
-    
-    def get_token_pairs(self, start: datetime, end: datetime) -> list[dict[str, str]]:
+        
+    def get_incomplete_token_pairs(self, start: datetime, end: datetime) -> list[dict[str, str]]:
         """
         Get the token pairs for the miner modules.
 
@@ -49,12 +49,11 @@ class PoolDataFetcher:
             The token pairs to fetch from rpc node.
         """
         token_pairs = self.db_manager.fetch_incompleted_token_pairs()
-        
         if not token_pairs:
             self.db_manager.mark_time_range_as_complete(start, end)
             return None
         return token_pairs[:80]
-
+    
     def save_pool_data(self, prob: dict, answer: dict) -> None:
         """
         Save the pool data to the database.
@@ -78,7 +77,9 @@ class PoolDataFetcher:
         Returns:
             Token pair and time range.
         """
-        token_pairs = self.get_token_pairs(time_range['start'], time_range['end'])
+        token_pairs = self.get_incomplete_token_pairs(time_range['start'], time_range['end'])
+        if not token_pairs:
+            return None
         
         # Implement your custom prompt generation logic here
         start_datetime=time_range['start'].strftime("%Y-%m-%d %H:%M:%S")
@@ -91,8 +92,11 @@ class PoolDataFetcher:
         return {"token_pairs": req_token_pairs, "start_datetime": start_datetime, "end_datetime": end_datetime}
 
     def process_time_range(self, time_range: dict):
-        print(f'Processing time range between {time_range['start']} and {time_range['end']}')
+        print(f'Processing time range between {time_range["start"]} and {time_range["end"]}')
         prob = self.get_next_token_pairs(time_range)
+        if prob is None:
+            return None
+            
         print(f'querying pool_data_fetcher with problem: {prob}')
         answer = self.pool_data_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'], '1h')
         
@@ -123,6 +127,7 @@ class PoolDataFetcher:
                     self.process_time_range(new_time_range)
                     
                     prev = now
+            self.get_incomplete_token_pairs(time_range['start'], time_range['end'])
     
 if __name__ == '__main__':
     pool_data_fetcher = PoolDataFetcher()
