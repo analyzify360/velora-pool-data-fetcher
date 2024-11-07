@@ -10,7 +10,7 @@ START_DATE = datetime(2021, 5, 4)
 class PoolDataFetcher:
     def __init__(self) -> None:
         self.db_manager = DBManager()
-        self.pool_data_fetcher = BlockchainClient(os.getenv('ETHEREUM_RPC_NODE_URL'))
+        self.uniswap_fetcher = UniswapFetcher(os.getenv('ETHEREUM_RPC_NODE_URL'))
         
     def add_new_time_range(self) -> None:
         """
@@ -26,12 +26,9 @@ class PoolDataFetcher:
         
         self.db_manager.add_timetable_entry(start, end)
         
-        start_date_str = start.strftime("%Y-%m-%d %H:%M:%S")
-        end_date_str = end.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"Fetching token pairs between {start} {(start.timestamp())} and {end} {(end.timestamp())}")
         
-        print(f"Fetching token pairs between {start_date_str} and {end_date_str}")
-        
-        token_pairs = self.pool_data_fetcher.get_pool_created_events_between_two_timestamps(start_date_str, end_date_str)
+        token_pairs = self.uniswap_fetcher.get_pool_created_events_between_two_timestamps(start.timestamp(), end.timestamp())
         self.db_manager.reset_token_pairs()
         self.db_manager.add_token_pairs(token_pairs)
         
@@ -81,15 +78,11 @@ class PoolDataFetcher:
         if not token_pairs:
             return None
         
-        # Implement your custom prompt generation logic here
-        start_datetime=time_range['start'].strftime("%Y-%m-%d %H:%M:%S")
-        end_datetime=time_range['end'].strftime("%Y-%m-%d %H:%M:%S")
-        
         req_token_pairs = []
         for token_pair in token_pairs:
             req_token_pairs.append((token_pair['token0'], token_pair['token1'], token_pair['fee']))
 
-        return {"token_pairs": req_token_pairs, "start_datetime": start_datetime, "end_datetime": end_datetime}
+        return {"token_pairs": req_token_pairs, "start_datetime": time_range[0].timestamp(), "end_datetime": time_range[1].timestamp()}
 
     def process_time_range(self, time_range: dict):
         print(f'Processing time range between {time_range["start"]} and {time_range["end"]}')
@@ -97,10 +90,10 @@ class PoolDataFetcher:
         if prob is None:
             return None
             
-        print(f'querying pool_data_fetcher with problem: {prob}')
-        answer = self.pool_data_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'], '1h')
+        print(f'querying uniswap_fetcher with problem: {prob}')
+        answer = self.uniswap_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'])
         
-        pool_data_fetcher.save_pool_data(prob, answer)
+        self.save_pool_data(prob, answer)
 
     def run(self):
         while True:
