@@ -1,4 +1,4 @@
-pool-data-fetcher
+uniswap_fetcher_rs
 sqlalchemy
 python-dotenv
 psycopg2

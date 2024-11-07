@@ -1,4 +1,4 @@
-from pool_data_fetcher import BlockchainClient
+from uniswap_fetcher_rs  import UniswapFetcher
 from db.db_manager import DBManager
 import os
 from datetime import datetime, timedelta
