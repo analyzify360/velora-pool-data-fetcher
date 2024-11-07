@@ -35,10 +35,10 @@ class PoolDataFetcher:
     
     def get_time_range(self) -> tuple[datetime, datetime]:
         """
-        Get the time range for the miner modules.
+        Get the time range to fetch.
 
         Returns:
-            The time range for the miner modules.
+            The time range to fetch.
         """
         incompleted_time_range = self.db_manager.fetch_incompleted_time_range()
         
@@ -56,7 +56,7 @@ class PoolDataFetcher:
             end: The end datetime.
 
         Returns:
-            The token pairs for the miner modules.
+            The token pairs to fetch from rpc node.
         """
         token_pairs = self.db_manager.fetch_incompleted_token_pairs()
         
@@ -65,19 +65,19 @@ class PoolDataFetcher:
             return None
         return token_pairs[:80]
 
-    def save_pool_data(self, miner_prompt: dict, miner_answer: dict) -> None:
+    def save_pool_data(self, prob: dict, answer: dict) -> None:
         """
         Save the pool data to the database.
         
         Args:
-            miner_prompt: The prompt for the miner modules.
-            miner_answer: The generated answer from the miner module
+            prob: The token_pair and datetime to fetch.
+            answer: The fetched data from rpc node.
         """
-        token_pairs = miner_prompt.get("token_pairs", None)
-        start_datetime = miner_prompt.get("start_datetime", None)
-        end_datetime = miner_prompt.get("end_datetime", None)
+        token_pairs = prob.get("token_pairs", None)
+        start_datetime = prob.get("start_datetime", None)
+        end_datetime = prob.get("end_datetime", None)
         
-        miner_data = miner_answer.get("data", None)
+        miner_data = answer.get("data", None)
         
         self.db_manager.add_pool_data(miner_data)
         
@@ -87,7 +87,38 @@ class PoolDataFetcher:
         
         if not token_pairs:
             self.db_manager.mark_time_range_as_complete(start_datetime, end_datetime)
+
+    def get_next_token_pairs(self) -> dict:
+        """
+        Get a token pair to fetch.
+
+        Returns:
+            Token pair and time range.
+        """
+        while True:
+            time_range = self.get_time_range()
+            token_pairs = self.get_token_pairs(time_range[0], time_range[1])
+            
+            if token_pairs:
+                break
+
+        # Implement your custom prompt generation logic here
+        start_datetime=time_range[0].strftime("%Y-%m-%d %H:%M:%S")
+        end_datetime=time_range[1].strftime("%Y-%m-%d %H:%M:%S")
+        
+        req_token_pairs = []
+        for token_pair in token_pairs:
+            req_token_pairs.append((token_pair['token0'], token_pair['token1'], token_pair['fee']))
+
+        return {"token_pairs": req_token_pairs, "start_datetime": start_datetime, "end_datetime": end_datetime}
+
+    def run(self):
+        prob = self.get_next_token_pairs()
+        answer = self.pool_data_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'], '1h')
+        
+        pool_data_fetcher.save_pool_data(prob, answer)
     
 
 if __name__ == '__main__':
-    pass
+    pool_data_fetcher = PoolDataFetcher()
+    pool_data_fetcher.run()
