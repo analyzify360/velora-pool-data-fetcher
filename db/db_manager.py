@@ -1,6 +1,7 @@
-from sqlalchemy import create_engine, Column, Date, Boolean, MetaData, Table, String, Integer, inspect, insert
+from sqlalchemy import create_engine, Column, Date, Boolean, MetaData, Table, String, Integer, inspect, insert, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
 from typing import Union, List, Dict
 from utils.config import get_postgres_url
 
@@ -23,13 +24,13 @@ class Tokenpairstable(Base):
     token1 = Column(String, nullable=False)
     fee = Column(Integer, nullable=False)
     pool = Column(String, nullable=False)
-    block_number = Column(String, nullable=False)
+    block_number = Column(Integer, nullable=False)
     completed = Column(Boolean, nullable=False)
 
 class Pooldatatable(Base):
     __tablename__ = 'pool_data'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    block_number = Column(String, nullable=False)
+    block_number = Column(Integer, nullable=False)
     event_type = Column(String, nullable=False)
     transaction_hash = Column(String, nullable=False)
 
@@ -99,6 +100,49 @@ class DBManager:
         # Create the table if it doesn't exist
         Base.metadata.create_all(self.engine)  # This line ensures the table is created if not exists
 
+        # Enable TimescaleDB and convert specific tables to hypertables
+        self.create_hypertables()
+
+    def create_hypertables(self):
+        """Enable TimescaleDB extension and convert tables to hypertables."""
+        with self.engine.connect() as conn:
+            conn.execution_options(isolation_level="AUTOCOMMIT")
+            try:
+                # Check if TimescaleDB extension is already installed
+                result = conn.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'timescaledb';"))
+                if not result.fetchone():
+                    conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;"))
+                    print("TimescaleDB extension created successfully.")
+                else:
+                    print("TimescaleDB extension already exists.")
+
+                # Check if hypertable is enabled
+                result = conn.execute(text(
+                    "SELECT * FROM timescaledb_information.hypertables;"
+                )).fetchall()
+                hypertables = [entry.hypertable_name for entry in result]
+                
+                if 'timetable' not in hypertables:
+                    conn.execute(text(
+                        "SELECT create_hypertable('timetable', 'start', if_not_exists => TRUE, migrate_data => true);"
+                    ))
+                    print("Hypertable 'timetable' created successfully.")
+                else:
+                    print("Hypertable 'timetable' already exists.")
+                
+                tables = ['pool_data', 'token_pairs', 'swap_event', 'mint_event', 'burn_event', 'collect_event']
+                for table in tables:
+                    if table not in hypertables:
+                        conn.execute(text(
+                            f"SELECT create_hypertable('{table}', 'id', if_not_exists => TRUE, migrate_data => true);"
+                        ))
+                        print(f"Hypertable '{table}' created successfully.")
+                    else:
+                        print(f"Hypertable '{table}' already exists.")
+
+            except SQLAlchemyError as e:
+                print(f"An error occurred: {e}")
+        
     def __enter__(self):
         self.session = self.Session()
         return self
