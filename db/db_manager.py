@@ -126,12 +126,14 @@ class DBManager:
             not_completed_data = session.query(Timetable).filter_by(completed=False).all()
             return [{"start": row.start, "end": row.end, "completed": row.completed} for row in not_completed_data]
     
-    def fetch_last_time_range(self) -> Dict[str, Union[Date, bool]]:
+    def fetch_last_time_range(self) -> Dict[str, Union[datetime, bool]]:
         """Fetch the last time range from the timetable."""
         with self.Session() as session:
             last_time_range = session.query(Timetable).order_by(Timetable.start.desc()).first()
             if last_time_range is not None:
-                return {"start": last_time_range.start, "end": last_time_range.end, "completed": last_time_range.completed}
+                return {"start": datetime.combine(last_time_range.start, datetime.min.time()), 
+                        "end": datetime.combine(last_time_range.end, datetime.min.time()), 
+                        "completed": last_time_range.completed}
             else:
                 return None
 

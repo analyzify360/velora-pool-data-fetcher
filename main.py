@@ -65,9 +65,11 @@ class PoolDataFetcher:
         """
         token_pairs = prob.get("token_pairs", None)        
         miner_data = answer.get("data", None)
+        print(f'saving pool data to database ...')
         
-        self.db_manager.add_pool_data(miner_data)        
+        self.db_manager.add_pool_data(miner_data)
         self.db_manager.mark_token_pairs_as_complete(token_pairs)
+        print(f'pool data saved successfully.')
 
     def get_next_token_pairs(self, time_range: dict) -> dict:
         """
@@ -79,8 +81,8 @@ class PoolDataFetcher:
         token_pairs = self.get_token_pairs(time_range['start'], time_range['end'])
         
         # Implement your custom prompt generation logic here
-        start_datetime=time_range[0].strftime("%Y-%m-%d %H:%M:%S")
-        end_datetime=time_range[1].strftime("%Y-%m-%d %H:%M:%S")
+        start_datetime=time_range['start'].strftime("%Y-%m-%d %H:%M:%S")
+        end_datetime=time_range['end'].strftime("%Y-%m-%d %H:%M:%S")
         
         req_token_pairs = []
         for token_pair in token_pairs:
@@ -89,8 +91,9 @@ class PoolDataFetcher:
         return {"token_pairs": req_token_pairs, "start_datetime": start_datetime, "end_datetime": end_datetime}
 
     def process_time_range(self, time_range: dict):
-        print(f'Processing time range {time_range.values()}')
+        print(f'Processing time range between {time_range['start']} and {time_range['end']}')
         prob = self.get_next_token_pairs(time_range)
+        print(f'querying pool_data_fetcher with problem: {prob}')
         answer = self.pool_data_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'], '1h')
         
         pool_data_fetcher.save_pool_data(prob, answer)
