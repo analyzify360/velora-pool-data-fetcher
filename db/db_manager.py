@@ -122,15 +122,7 @@ class DBManager:
                 )).fetchall()
                 hypertables = [entry.hypertable_name for entry in result]
                 
-                if 'timetable' not in hypertables:
-                    conn.execute(text(
-                        "SELECT create_hypertable('timetable', 'start', if_not_exists => TRUE, migrate_data => true);"
-                    ))
-                    print("Hypertable 'timetable' created successfully.")
-                else:
-                    print("Hypertable 'timetable' already exists.")
-                
-                tables = ['pool_data', 'token_pairs', 'swap_event', 'mint_event', 'burn_event', 'collect_event']
+                tables = ['timetable', 'pool_data', 'token_pairs', 'swap_event', 'mint_event', 'burn_event', 'collect_event']
                 for table in tables:
                     if table not in hypertables:
                         conn.execute(text(
