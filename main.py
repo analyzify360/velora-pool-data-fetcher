@@ -2,6 +2,9 @@ from pool_data_fetcher import BlockchainClient
 from db.db_manager import DBManager
 import os
 from datetime import datetime, timedelta
+import time
+
+TIME_INTERVAL = 10 * 60
 
 class PoolDataFetcher:
     def __init__(self) -> None:
@@ -31,7 +34,7 @@ class PoolDataFetcher:
         self.db_manager.reset_token_pairs()
         self.db_manager.add_token_pairs(token_pairs)
         
-        return start, end
+        return {'start' : start, 'end' : end}
     
     def get_time_range(self) -> tuple[datetime, datetime]:
         """
@@ -88,20 +91,15 @@ class PoolDataFetcher:
         if not token_pairs:
             self.db_manager.mark_time_range_as_complete(start_datetime, end_datetime)
 
-    def get_next_token_pairs(self) -> dict:
+    def get_next_token_pairs(self, time_range: dict) -> dict:
         """
         Get a token pair to fetch.
 
         Returns:
             Token pair and time range.
         """
-        while True:
-            time_range = self.get_time_range()
-            token_pairs = self.get_token_pairs(time_range[0], time_range[1])
-            
-            if token_pairs:
-                break
-
+        token_pairs = self.get_token_pairs(time_range['start'], time_range['end'])
+        
         # Implement your custom prompt generation logic here
         start_datetime=time_range[0].strftime("%Y-%m-%d %H:%M:%S")
         end_datetime=time_range[1].strftime("%Y-%m-%d %H:%M:%S")
@@ -112,11 +110,35 @@ class PoolDataFetcher:
 
         return {"token_pairs": req_token_pairs, "start_datetime": start_datetime, "end_datetime": end_datetime}
 
-    def run(self):
-        prob = self.get_next_token_pairs()
+    def process_time_range(self, time_range: dict):
+        prob = self.get_next_token_pairs(time_range)
         answer = self.pool_data_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'], '1h')
         
         pool_data_fetcher.save_pool_data(prob, answer)
+
+    def run(self):
+        while True:
+            time_range = self.db_manager.fetch_last_time_range()
+            if time_range == None or time_range['completed'] == True:
+                time_range = self.add_new_time_range()
+                
+            now = datetime.now()
+            if(time_range['end'] <= now):
+                self.process_time_range(time_range)
+            else:
+                adjusted_time_range = {'start': time_range['start'], 'end': now}
+                self.process_time_range(adjusted_time_range)
+                
+                prev = now
+                while prev <= time_range['end']:
+                    time.sleep(TIME_INTERVAL)
+                    
+                    now = datetime.now()
+                    new_time_range = {'start': prev, 'end': now}
+                    self.process_time_range(new_time_range)
+                    
+                    prev = now
+        
     
 
 if __name__ == '__main__':
