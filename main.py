@@ -3,6 +3,7 @@ from db.db_manager import DBManager
 import os
 from datetime import datetime, timedelta
 import time
+import pandas as pd
 
 TIME_INTERVAL = 10 * 60
 START_DATE = datetime(2021, 5, 4)
@@ -94,6 +95,72 @@ class PoolDataFetcher:
         answer = self.uniswap_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'])
         
         self.save_pool_data(prob, answer)
+    
+    def generate_signals(self, pool_data: dict) -> None:
+        """
+        Generate signals from the pool data.
+
+        Args:
+            pool_data: The pool data to generate signals from.
+        """
+        data = pool_data.get("data", None)
+        if data is None:
+            return None
+        df = pd.DataFrame(data["data"])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')  # Convert to datetime
+        df['amount'] = df['event'].apply(lambda x: int(x['data']['amount'], 16) if 'amount' in x['data'] else None)
+        df['amount0'] = df['event'].apply(lambda x: int(x['data']['amount0'], 16))
+        df['amount1'] = df['event'].apply(lambda x: int(x['data']['amount1'], 16))
+        df['sqrt_price_x96'] = df['event'].apply(lambda x: int(x['data']['sqrt_price_x96'], 16) if 'sqrt_price_x96' in x['data'] else None)
+        # Helper function to calculate price from sqrt_price_x96
+        def calculate_price(sqrt_price_x96):
+            res = (sqrt_price_x96 / (2**96)) ** 2
+            return res
+
+        # Calculate price of token0 based on token1 using sqrt_price_x96
+        df['price'] = df['sqrt_price_x96'].apply(
+            lambda x: calculate_price(x) if x is not None else None
+        )
+        df['price'].ffill(inplace=True)
+        df['amount0'].ffill(inplace=True)
+        df['amount1'].ffill(inplace=True)
+        # Filter by event type
+        swap_events = df[df['type'] == 'swap']
+        mint_events = df[df['type'] == 'mint']
+        burn_events = df[df['type'] == 'burn']
+        
+        interval = '5min'
+        metrics = self.calculate_metrics_by_interval(swap_events, mint_events, burn_events, interval)
+        signals = [ {'timestamp': row['timestamp'], 'price': row['price'], 'volume': row['volume'], 'liquidity': row['net_liquidity']} for __, row in metrics.iterrows()]
+        self.db_manager.add_uniswap_signals(signals)
+
+    # Define a function to calculate metrics per interval
+    def calculate_metrics_by_interval(self, swap_events, mint_events, burn_events, interval):
+        # Volume and Price from Swap Events
+        swap_resampled = swap_events.set_index('timestamp').resample(interval)
+        
+        # Calculate price using sqrt_price_x96
+        price_sqrt = swap_resampled['price'].mean()
+        
+        # Calculate volume as the sum of absolute amounts
+        volume0 = swap_resampled['amount0'].sum().abs()  # Volume calculation
+        volume1 = swap_resampled['amount1'].sum().abs() # Volume calculation
+        volume = volume0 + volume1
+        
+        # Liquidity from Mint and Burn Events
+        mint_resampled = mint_events.set_index('timestamp').resample(interval)[['amount']].sum()
+        burn_resampled = burn_events.set_index('timestamp').resample(interval)[['amount']].sum()
+        
+        # Net liquidity change = Mints - Burns
+        net_liquidity = mint_resampled - burn_resampled
+        net_liquidity.columns = ['net_liquidity']
+        net_liquidity.ffill()
+        
+        # Combine all metrics
+        metrics = pd.concat([price_sqrt, volume, net_liquidity], axis=1)
+        metrics.reset_index(inplace=True)
+        
+        return metrics
 
     def run(self):
         while True:
