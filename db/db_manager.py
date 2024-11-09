@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Date, Boolean, MetaData, Table, String, Integer, inspect, insert, text
+from sqlalchemy import create_engine, Column, Date, DateTime, Boolean, MetaData, Table, String, Integer, inspect, insert, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
@@ -88,6 +88,15 @@ class CollectEventTable(Base):
     amount0 = Column(String, nullable=False)  # U256 can be stored as String
     amount1 = Column(String, nullable=False)  # U256 can be stored as String
 
+class UniswapSignalsTable(Base):
+    __tablename__ = 'uniswap_signals'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime(timezone=True), nullable=False)
+    pool_address = Column(String, nullable=False)
+    price = Column(Integer, nullable=False)
+    liquidity = Column(Integer, nullable=False)
+    volume = Column(Integer, nullable=False)
+
 class DBManager:
 
     def __init__(self, url = get_postgres_url()) -> None:
@@ -131,6 +140,17 @@ class DBManager:
                         print(f"Hypertable '{table}' created successfully.")
                     else:
                         print(f"Hypertable '{table}' already exists.")
+                conn.execute(text(
+                    f"""
+                    SELECT create_hypertable(
+                        'uniswap_signals', 
+                        'timestamp', 
+                        if_not_exists => TRUE, 
+                        migrate_data => true, 
+                        chunk_time_interval => INTERVAL '1 day'
+                    );
+                    """
+                ))
 
             except SQLAlchemyError as e:
                 print(f"An error occurred: {e}")
@@ -274,3 +294,14 @@ class DBManager:
             with self.Session() as session:
                 session.add_all(collect_event_data)
                 session.commit()
+    
+    def add_uniswap_signals(self, signals: List[Dict]) -> None:
+        """Add Uniswap signals to the corresponding table."""
+        insert_values = [
+            UniswapSignalsTable(timestamp=signal['timestamp'], pool_address=signal['pool_address'], price=signal['price'], liquidity=signal['liquidity'], volume=signal['volume'])
+            for signal in signals
+        ]
+
+        with self.Session() as session:
+            session.add_all(insert_values)
+            session.commit()
