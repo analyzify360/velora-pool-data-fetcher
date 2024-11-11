@@ -13,8 +13,8 @@ Base = declarative_base()
 # Define the timetable table
 class Timetable(Base):
     __tablename__ = 'timetable'
-    start = Column(int, primary_key=True)  # Assuming 'start' is a unique field, hence primary key
-    end = Column(int)
+    start = Column(Integer, primary_key=True)  # Assuming 'start' is a unique field, hence primary key
+    end = Column(Integer)
     completed = Column(Boolean)
 
 class Tokenpairstable(Base):
@@ -243,20 +243,20 @@ class DBManager:
         # Don't forget to close the session
         self.session.close()
     
-    def add_timetable_entry(self, start: int, end: int) -> None:
+    def add_timetable_entry(self, start: Integer, end: Integer) -> None:
         """Add a new timetable entry to the database."""
         with self.Session() as session:
             new_entry = Timetable(start=start, end=end, completed=False)
             session.add(new_entry)
             session.commit()
 
-    def fetch_timetable_data(self) -> List[Dict[str, Union[int, bool]]]:
+    def fetch_timetable_data(self) -> List[Dict[str, Union[Integer, bool]]]:
         """Fetch all timetable data from the database."""
         with self.Session() as session:
             timetable_data = session.query(Timetable).all()
             return [{"start": row.start, "end": row.end, "completed": row.completed} for row in timetable_data]
 
-    def fetch_incompleted_time_range(self) -> List[Dict[str, Union[int, bool]]]:
+    def fetch_incompleted_time_range(self) -> List[Dict[str, Union[Integer, bool]]]:
         """Fetch all not completed time ranges from the timetable."""
         with self.Session() as session:
             not_completed_data = session.query(Timetable).filter_by(completed=False).all()
@@ -273,7 +273,7 @@ class DBManager:
             else:
                 return None
 
-    def mark_time_range_as_complete(self, start: int, end: int) -> bool:
+    def mark_time_range_as_complete(self, start: Integer, end: Integer) -> bool:
         """Mark a timetable entry as complete."""
         with self.Session() as session:
             record = session.query(Timetable).filter_by(start=start, end=end).first()
@@ -283,7 +283,7 @@ class DBManager:
                 return True
             return False
 
-    def add_token_pairs(self, token_pairs: List[Dict[str, Union[str, int]]]) -> None:
+    def add_token_pairs(self, token_pairs: List[Dict[str, Union[str, Integer]]]) -> None:
         """Add token pairs to the corresponding table."""
         
         insert_values = [
@@ -301,7 +301,7 @@ class DBManager:
             token_pairs = session.query(Tokenpairstable).all()
             return [{"token0": row.token0, "token1": row.token1, "fee": row.fee, "completed": row.completed} for row in token_pairs]
 
-    def fetch_incompleted_token_pairs(self) -> List[Dict[str, Union[str, int, bool]]]:
+    def fetch_incompleted_token_pairs(self) -> List[Dict[str, Union[str, Integer, bool]]]:
         """Fetch all incompleted token pairs from the corresponding table."""
         with self.Session() as session:
             incompleted_token_pairs = session.query(Tokenpairstable).filter_by(completed=False).all()
