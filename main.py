@@ -9,6 +9,7 @@ TIME_INTERVAL = 10 * 60
 START_TIMESTAMP = datetime(2021, 5, 4).timestamp()
 DAY_SECONDS = 86400
 
+
 class PoolDataFetcher:
     def __init__(self) -> None:
         self.db_manager = DBManager()
