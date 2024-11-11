@@ -123,7 +123,7 @@ class DBManager:
                 )).fetchall()
                 hypertables = [entry.hypertable_name for entry in result]
                 
-                tables = ['timetable', 'pool_data', 'token_pairs', 'swap_event', 'mint_event', 'burn_event', 'collect_event']
+                tables = ['token_pairs', 'swap_event', 'mint_event', 'burn_event', 'collect_event']
                 for table in tables:
                     if table not in hypertables:
                         conn.execute(text(
@@ -140,7 +140,7 @@ class DBManager:
                         'pool_address',
                         if_not_exists => TRUE, 
                         migrate_data => true, 
-                        chunk_time_interval => INTERVAL '1 day',
+                        chunk_time_interval => 86400,
                         number_partitions => 6000
                     );
                     """
@@ -267,8 +267,8 @@ class DBManager:
         with self.Session() as session:
             last_time_range = session.query(Timetable).order_by(Timetable.start.desc()).first()
             if last_time_range is not None:
-                return {"start": datetime.combine(last_time_range.start, datetime.min.time()), 
-                        "end": datetime.combine(last_time_range.end, datetime.min.time()), 
+                return {"start": last_time_range.start, 
+                        "end": last_time_range.end, 
                         "completed": last_time_range.completed}
             else:
                 return None

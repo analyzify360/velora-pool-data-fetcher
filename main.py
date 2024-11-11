@@ -6,7 +6,7 @@ import time
 import pandas as pd
 
 TIME_INTERVAL = 10 * 60
-START_TIMESTAMP = datetime(2021, 5, 4).timestamp()
+START_TIMESTAMP = int(datetime(2021, 5, 4).timestamp())
 DAY_SECONDS = 86400
 
 
@@ -31,7 +31,7 @@ class PoolDataFetcher:
         
         print(f"Fetching token pairs between {start} and {end}")
         
-        token_pairs = self.uniswap_fetcher.get_pool_created_events_between_two_timestamps(int(start.timestamp()), int(end.timestamp()))
+        token_pairs = self.uniswap_fetcher.get_pool_created_events_between_two_timestamps(int(start), int(end))
         self.db_manager.reset_token_pairs()
         self.db_manager.add_token_pairs(token_pairs)
         
@@ -85,7 +85,7 @@ class PoolDataFetcher:
         for token_pair in token_pairs:
             req_token_pairs.append((token_pair['token0'], token_pair['token1'], token_pair['fee']))
 
-        return {"token_pairs": req_token_pairs, "start_datetime": int(time_range['start'].timestamp()), "end_datetime": int(time_range['end'].timestamp())}
+        return {"token_pairs": req_token_pairs, "start_datetime": int(time_range['start']), "end_datetime": int(time_range['end'])}
 
     def process_time_range(self, time_range: dict):
         print(f'Processing time range between {time_range["start"]} and {time_range["end"]}')
@@ -112,7 +112,7 @@ class PoolDataFetcher:
         if not data:
             return None
         df = pd.DataFrame(data)
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')  # Convert to datetime
+        # df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')  # Convert to datetime
         df['amount'] = df['event'].apply(lambda x: int(x['data']['amount'], 16) if 'amount' in x['data'] else None)
         df['amount0'] = df['event'].apply(lambda x: int(x['data']['amount0'], 16))
         df['amount1'] = df['event'].apply(lambda x: int(x['data']['amount1'], 16))
@@ -187,7 +187,7 @@ class PoolDataFetcher:
             if time_range == None or time_range['completed'] == True:
                 time_range = self.add_new_time_range()
                 
-            now = datetime.now()
+            now = datetime.now().timestamp()
             if(time_range['end'] <= now):
                 self.process_time_range(time_range)
             else:
