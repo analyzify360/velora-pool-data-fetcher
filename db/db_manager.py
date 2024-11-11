@@ -83,7 +83,7 @@ class CollectEventTable(Base):
 
 class UniswapSignalsTable(Base):
     __tablename__ = 'uniswap_signals'
-    timestamp = Column(DateTime(timezone=True), nullable=False, primary_key=True)
+    timestamp = Column(Integer(timezone=True), nullable=False, primary_key=True)
     pool_address = Column(String, nullable=False, primary_key=True)
     price = Column(String)
     liquidity = Column(String)
