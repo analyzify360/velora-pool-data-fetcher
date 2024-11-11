@@ -13,11 +13,11 @@ jobs:
     runs-on: ubuntu-latest
 
     env:  # Set environment variables for all steps in this job
-      DB_NAME: ${{ secrets.DB_NAME }}
-      DB_USER: ${{ secrets.DB_USER }}
-      DB_HOST: ${{ secrets.DB_HOST }}
-      DB_PORT: ${{ secrets.DB_PORT }}
-      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ secrets.POSTGRES_DB }}
+      DB_USER: ${{ secrets.POSTGRES_USER }}
+      DB_HOST: ${{ secrets.POSTGRES_HOST }}
+      DB_PORT: ${{ secrets.POSTGRES_PORT }}
+      DB_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       
     steps:
       - name: Checkout code
