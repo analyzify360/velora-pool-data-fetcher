@@ -27,13 +27,6 @@ class Tokenpairstable(Base):
     block_number = Column(Integer, nullable=False)
     completed = Column(Boolean, nullable=False)
 
-class Pooldatatable(Base):
-    __tablename__ = 'pool_data'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    block_number = Column(Integer, nullable=False)
-    event_type = Column(String, nullable=False)
-    transaction_hash = Column(String, nullable=False)
-
 class SwapEventTable(Base):
     __tablename__ = 'swap_event'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -333,14 +326,6 @@ class DBManager:
 
     def add_pool_data(self, pool_data: List[Dict]) -> None:
         """Add pool data to the pool data table and related event tables."""
-        insert_values = [
-            Pooldatatable(block_number=data['block_number'], event_type=data['event']['type'], transaction_hash=data['transaction_hash'])
-            for data in pool_data
-        ]
-
-        with self.Session() as session:
-            session.add_all(insert_values)  # Add the pool data to the pool data table
-            session.commit()
 
         # Add the swap event data to the swap event table
         swap_event_data = [
