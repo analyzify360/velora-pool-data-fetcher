@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Date, DateTime, Boolean, MetaData, Table, String, Integer, Numeric, inspect, insert, text
+from sqlalchemy import create_engine, Column, Boolean, MetaData, Table, String, Integer, Numeric, inspect, insert, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
@@ -13,8 +13,8 @@ Base = declarative_base()
 # Define the timetable table
 class Timetable(Base):
     __tablename__ = 'timetable'
-    start = Column(Date, primary_key=True)  # Assuming 'start' is a unique field, hence primary key
-    end = Column(Date)
+    start = Column(int, primary_key=True)  # Assuming 'start' is a unique field, hence primary key
+    end = Column(int)
     completed = Column(Boolean)
 
 class Tokenpairstable(Base):
@@ -243,20 +243,20 @@ class DBManager:
         # Don't forget to close the session
         self.session.close()
     
-    def add_timetable_entry(self, start: Date, end: Date) -> None:
+    def add_timetable_entry(self, start: int, end: int) -> None:
         """Add a new timetable entry to the database."""
         with self.Session() as session:
             new_entry = Timetable(start=start, end=end, completed=False)
             session.add(new_entry)
             session.commit()
 
-    def fetch_timetable_data(self) -> List[Dict[str, Union[Date, bool]]]:
+    def fetch_timetable_data(self) -> List[Dict[str, Union[int, bool]]]:
         """Fetch all timetable data from the database."""
         with self.Session() as session:
             timetable_data = session.query(Timetable).all()
             return [{"start": row.start, "end": row.end, "completed": row.completed} for row in timetable_data]
 
-    def fetch_incompleted_time_range(self) -> List[Dict[str, Union[Date, bool]]]:
+    def fetch_incompleted_time_range(self) -> List[Dict[str, Union[int, bool]]]:
         """Fetch all not completed time ranges from the timetable."""
         with self.Session() as session:
             not_completed_data = session.query(Timetable).filter_by(completed=False).all()
@@ -273,7 +273,7 @@ class DBManager:
             else:
                 return None
 
-    def mark_time_range_as_complete(self, start: Date, end: Date) -> bool:
+    def mark_time_range_as_complete(self, start: int, end: int) -> bool:
         """Mark a timetable entry as complete."""
         with self.Session() as session:
             record = session.query(Timetable).filter_by(start=start, end=end).first()

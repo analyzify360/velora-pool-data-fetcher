@@ -6,7 +6,8 @@ import time
 import pandas as pd
 
 TIME_INTERVAL = 10 * 60
-START_DATE = datetime(2021, 5, 4)
+START_TIMESTAMP = datetime(2021, 5, 4).timestamp()
+DAY_SECONDS = 86400
 
 class PoolDataFetcher:
     def __init__(self) -> None:
@@ -19,15 +20,15 @@ class PoolDataFetcher:
         """
         last_time_range = self.db_manager.fetch_last_time_range()
         if last_time_range == None:
-            start = START_DATE
-            end = START_DATE + timedelta(days=1)
+            start = START_TIMESTAMP
+            end = START_TIMESTAMP + DAY_SECONDS
         else:
             start = last_time_range["end"]
-            end = last_time_range["end"] + timedelta(days=1)
-        
+            end = last_time_range["end"] + DAY_SECONDS
+            
         self.db_manager.add_timetable_entry(start, end)
         
-        print(f"Fetching token pairs between {start} {int(start.timestamp())} and {end} {int(end.timestamp())}")
+        print(f"Fetching token pairs between {start} and {end}")
         
         token_pairs = self.uniswap_fetcher.get_pool_created_events_between_two_timestamps(int(start.timestamp()), int(end.timestamp()))
         self.db_manager.reset_token_pairs()
@@ -35,7 +36,7 @@ class PoolDataFetcher:
         
         return {'start' : start, 'end' : end}
         
-    def get_incomplete_token_pairs(self, start: datetime, end: datetime) -> list[dict[str, str]]:
+    def get_incomplete_token_pairs(self, start: int, end: int) -> list[dict[str, str]]:
         """
         Get the token pairs for the miner modules.
 
@@ -96,7 +97,7 @@ class PoolDataFetcher:
         self.generate_signals(answer, time_range['start'], time_range['end'])
         self.save_pool_data(prob, answer)
     
-    def generate_signals(self, pool_data: dict, start: datetime, end: datetime, interval: str = '5min') -> None:
+    def generate_signals(self, pool_data: dict, start: int, end: int, interval: str = '5min') -> None:
         """
         Generate signals from the pool data.
 
