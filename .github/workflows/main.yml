@@ -1,0 +1,51 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'  # Specify your Python version here
+
+      - name: Clear Database
+        run: |
+          # Replace with your database clearing command
+          echo "Clearing the database..."
+          
+          # Export password to avoid password prompt
+          export PGPASSWORD=$DB_PASSWORD
+          
+          # Run the SQL command to drop all tables
+          psql -U $DB_USER -d $DB_NAME -h $DB_HOST -p $DB_PORT -c "
+          DO \$\$ DECLARE
+              r RECORD;
+          BEGIN
+              FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                  EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+              END LOOP;
+          END \$\$;
+          "
+          
+          # Unset the password variable for security
+          unset PGPASSWORD
+
+          echo "All tables deleted successfully."
+
+      - name: Run main.py
+        run: |
+          echo "Running the application..."
+          python3 main.py
