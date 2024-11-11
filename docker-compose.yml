@@ -10,6 +10,8 @@ services:
       - "${POSTGRES_PORT}:5432"                      # Expose PostgreSQL port to localhost
     volumes:
       - timescaledb_data:/var/lib/postgresql/data  # Persist data locally
+    networks:
+      - postgres_network
 
   geth:
     image: ethereum/client-go:stable

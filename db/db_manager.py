@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Date, Boolean, MetaData, Table, String, Integer, inspect, insert, text
+from sqlalchemy import create_engine, Column, Date, DateTime, Boolean, MetaData, Table, String, Integer, Numeric, inspect, insert, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
@@ -88,6 +88,14 @@ class CollectEventTable(Base):
     amount0 = Column(String, nullable=False)  # U256 can be stored as String
     amount1 = Column(String, nullable=False)  # U256 can be stored as String
 
+class UniswapSignalsTable(Base):
+    __tablename__ = 'uniswap_signals'
+    timestamp = Column(DateTime(timezone=True), nullable=False, primary_key=True)
+    pool_address = Column(String, nullable=False, primary_key=True)
+    price = Column(String)
+    liquidity = Column(String)
+    volume = Column(String)
+
 class DBManager:
 
     def __init__(self, url = get_postgres_url()) -> None:
@@ -131,6 +139,105 @@ class DBManager:
                         print(f"Hypertable '{table}' created successfully.")
                     else:
                         print(f"Hypertable '{table}' already exists.")
+                conn.execute(text(
+                    f"""
+                    SELECT create_hypertable(
+                        'uniswap_signals',
+                        'timestamp',
+                        'pool_address',
+                        if_not_exists => TRUE, 
+                        migrate_data => true, 
+                        chunk_time_interval => INTERVAL '1 day',
+                        number_partitions => 6000
+                    );
+                    """
+                ))
+                print("Hypertable 'uniswap_signals' created successfully.")
+                conn.execute(text(
+                    f"""
+                    CREATE OR REPLACE FUNCTION fill_missing_values()
+                    RETURNS TRIGGER AS $$
+                    DECLARE
+                        last_price RECORD;
+                        last_liquidity RECORD;
+                        last_volume RECORD;
+                    BEGIN
+                        -- Check and retrieve the last known price for this pool_address if NEW.price is NULL
+                        IF NEW.price IS NULL THEN
+                            SELECT price
+                            INTO last_price
+                            FROM uniswap_signals
+                            WHERE pool_address = NEW.pool_address
+                            AND price IS NOT NULL
+                            ORDER BY timestamp DESC
+                            LIMIT 1;
+
+                            -- Substitute NULL price with the last known price, if available
+                            IF last_price IS NOT NULL THEN
+                                NEW.price := last_price.price;
+                            END IF;
+                        END IF;
+
+                        -- Check and retrieve the last known liquidity for this pool_address if NEW.liquidity is NULL
+                        IF NEW.liquidity IS NULL THEN
+                            SELECT liquidity
+                            INTO last_liquidity
+                            FROM uniswap_signals
+                            WHERE pool_address = NEW.pool_address
+                            AND liquidity IS NOT NULL
+                            ORDER BY timestamp DESC
+                            LIMIT 1;
+
+                            -- Substitute NULL liquidity with the last known liquidity, if available
+                            IF last_liquidity IS NOT NULL THEN
+                                NEW.liquidity := last_liquidity.liquidity;
+                            END IF;
+                        END IF;
+
+                        -- Check and retrieve the last known volume for this pool_address if NEW.volume is NULL
+                        IF NEW.volume IS NULL THEN
+                            SELECT volume
+                            INTO last_volume
+                            FROM uniswap_signals
+                            WHERE pool_address = NEW.pool_address
+                            AND volume IS NOT NULL
+                            ORDER BY timestamp DESC
+                            LIMIT 1;
+
+                            -- Substitute NULL volume with the last known volume, if available
+                            IF last_volume IS NOT NULL THEN
+                                NEW.volume := last_volume.volume;
+                            END IF;
+                        END IF;
+
+                        -- Return the potentially modified NEW record
+                        RETURN NEW;
+                    END;
+                    $$ LANGUAGE plpgsql;
+
+                    """
+                ))
+                print("Function 'fill_missing_values' created successfully.")
+                conn.execute(text(
+                    f"""
+                    DO $$
+                    BEGIN
+                        -- Check if the trigger already exists
+                        IF NOT EXISTS (
+                            SELECT 1 
+                            FROM pg_trigger 
+                            WHERE tgname = 'fill_missing_values_trigger'
+                            AND tgrelid = 'uniswap_signals'::regclass
+                        ) THEN
+                            -- Only create the trigger if it doesn't exist
+                            CREATE TRIGGER fill_missing_values_trigger
+                            BEFORE INSERT ON uniswap_signals
+                            FOR EACH ROW
+                            EXECUTE FUNCTION fill_missing_values();
+                        END IF;
+                    END $$;
+                    """
+                ))
 
             except SQLAlchemyError as e:
                 print(f"An error occurred: {e}")
@@ -274,3 +381,26 @@ class DBManager:
             with self.Session() as session:
                 session.add_all(collect_event_data)
                 session.commit()
+    
+    def add_uniswap_signals(self, signals: List[Dict]) -> None:
+        """Add Uniswap signals to the corresponding table."""
+        with self.engine.connect() as conn:
+            conn.execution_options(isolation_level="AUTOCOMMIT")
+            try:
+                values = []
+                for signal in signals:
+                    price = 'NULL' if signal['price'] == None else f"'{signal['price']}'"
+                    liquidity = 'NULL' if signal['liquidity'] == None else f"'{signal['liquidity']}'"
+                    volume = 'NULL' if signal['volume'] == None else f"'{signal['volume']}'"
+                    values.append(f"('{signal['timestamp']}', '{signal['pool_address']}', {price}, {liquidity}, {volume})")
+                
+                for value in values:
+                    conn.execute(text(
+                        f"""
+                        INSERT INTO uniswap_signals (timestamp, pool_address, price, liquidity, volume)
+                        VALUES {value}
+                        """
+                    ))
+                    conn.commit()
+            except SQLAlchemyError as e:
+                print(f"An error occurred: {e}")
