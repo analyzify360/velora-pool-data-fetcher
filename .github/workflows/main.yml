@@ -13,11 +13,11 @@ jobs:
     runs-on: ubuntu-latest
 
     env:  # Set environment variables for all steps in this job
-      DB_NAME: ${{ secrets.POSTGRES_DB }}
-      DB_USER: ${{ secrets.POSTGRES_USER }}
-      DB_HOST: ${{ secrets.POSTGRES_HOST }}
-      DB_PORT: ${{ secrets.POSTGRES_PORT }}
-      DB_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+      POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       
     steps:
       - name: Checkout code
@@ -34,10 +34,10 @@ jobs:
           echo "Clearing the database..."
           
           # Export password to avoid password prompt
-          export PGPASSWORD=$DB_PASSWORD
+          export PGPASSWORD=$POSTGRES_PASSWORD
           
           # Run the SQL command to drop all tables
-          psql -U $DB_USER -d $DB_NAME -h $DB_HOST -p $DB_PORT -c "
+          psql -U $POSTGRES_USER -d $POSTGRES_DB -h $POSTGRES_HOST -p $POSTGRES_PORT -c "
           DO \$\$ DECLARE
               r RECORD;
           BEGIN
