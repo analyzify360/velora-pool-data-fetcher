@@ -93,9 +93,11 @@ class PoolDataFetcher:
         if prob is None:
             return None
             
-        # print(f'querying uniswap_fetcher with problem: {prob}')
+        print(f'querying uniswap_fetcher with problem: {prob}')
         answer = self.uniswap_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'])
+        print(f'received answer')
         self.generate_signals(answer, time_range['start'], time_range['end'])
+        print(f'saving data...')
         self.save_pool_data(prob, answer)
     
     def generate_signals(self, pool_data: dict, start: int, end: int, interval: str = '5min') -> None:
@@ -112,7 +114,7 @@ class PoolDataFetcher:
         if not data:
             return None
         df = pd.DataFrame(data)
-        # df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')  # Convert to datetime
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')  # Convert to datetime
         df['amount'] = df['event'].apply(lambda x: int(x['data']['amount'], 16) if 'amount' in x['data'] else None)
         df['amount0'] = df['event'].apply(lambda x: int(x['data']['amount0'], 16))
         df['amount1'] = df['event'].apply(lambda x: int(x['data']['amount1'], 16))
@@ -135,7 +137,7 @@ class PoolDataFetcher:
             
             signals = [
                 {
-                    'timestamp': row['timestamp'],
+                    'timestamp': int(row['timestamp'].timestamp()),
                     'price': row['price'] if pd.notna(row['price']) else None,
                     'volume': row['volume'] if pd.notna(row['volume']) else None,
                     'liquidity': row['net_liquidity'] if pd.notna(row['net_liquidity']) else None,
@@ -148,7 +150,7 @@ class PoolDataFetcher:
     # Define a function to calculate metrics per interval
     def calculate_metrics_by_interval(self, swap_events, mint_events, burn_events, start, end, interval):
         # Create a date range for the custom timestamp
-        date_range = pd.date_range(start=start, end=end, freq=interval)
+        date_range = pd.date_range(start=datetime.fromtimestamp(start), end=datetime.fromtimestamp(end), freq=interval)
         
         swap_events = swap_events.groupby('timestamp').agg({'amount0': 'sum', 'amount1': 'sum', 'price': 'mean'}).reset_index()
         mint_events = mint_events.groupby('timestamp').agg({'amount': 'sum'}).reset_index()
