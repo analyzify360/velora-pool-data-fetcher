@@ -18,6 +18,7 @@ jobs:
       POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
       POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      ETHEREUM_RPC_NODE_URL: ${{ secrets.ETHEREUM_RPC_NODE_URL }}
       
     steps:
       - name: Checkout code
