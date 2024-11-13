@@ -26,6 +26,15 @@ class TokenPairTable(Base):
     pool = Column(String, nullable=False)
     block_number = Column(Integer, nullable=False)
     completed = Column(Boolean, nullable=False)
+    
+class TokenTable(Base):
+    __tablename__ = 'tokens'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    address = Column(String, nullable=False)
+    symbol = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    decimals = Column(Integer, nullable=False)
+    total_supply = Column(String, nullable=False)  # U256 can be stored as String
 
 class SwapEventTable(Base):
     __tablename__ = 'swap_event'
