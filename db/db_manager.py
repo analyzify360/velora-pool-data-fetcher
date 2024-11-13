@@ -29,12 +29,10 @@ class TokenPairTable(Base):
     
 class TokenTable(Base):
     __tablename__ = 'tokens'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    address = Column(String, nullable=False)
+    address = Column(String, primary_key=True, nullable=False)
     symbol = Column(String, nullable=False)
     name = Column(String, nullable=False)
     decimals = Column(Integer, nullable=False)
-    total_supply = Column(String, nullable=False)  # U256 can be stored as String
 
 class SwapEventTable(Base):
     __tablename__ = 'swap_event'
@@ -181,7 +179,7 @@ class DBManager:
                 )).fetchall()
                 hypertables = [entry.hypertable_name for entry in result]
                 
-                tables = ['token_pairs', 'swap_event', 'mint_event', 'burn_event', 'collect_event']
+                tables = ['token_pairs', 'tokens', 'swap_event', 'mint_event', 'burn_event', 'collect_event']
                 for table in tables:
                     if table not in hypertables:
                         conn.execute(text(
@@ -340,21 +338,37 @@ class DBManager:
                 session.commit()
                 return True
             return False
+    
+    def add_tokens(self, tokens: List[Dict[str, Union[str, Integer]]]) -> None:
+        """Add tokens to the corresponding table."""
+        with self.Session() as session:
+            for token in tokens:
+                exists = session.query(TokenTable).filter_by(address=token['address']).first()
+                if not exists:
+                    new_token = TokenTable(
+                        address=token['address'],
+                        symbol=token['symbol'],
+                        name=token['name'],
+                        decimals=token['decimals']
+                    )
+                    session.add(new_token)
+            session.commit()
 
     def add_token_pairs(self, token_pairs: List[Dict[str, Union[str, Integer]]]) -> None:
         """Add token pairs to the corresponding table."""
         
         insert_values = [
             TokenPairTable(
-                token0 = token_pair['token0'],
-                token1 = token_pair['token1'],
-                
+                token0 = token_pair['token0']["address"],
+                token1 = token_pair['token1']["address"],
                 fee = token_pair['fee'],
-                pool = token_pair['pool'],
+                pool = token_pair['pool_address'],
                 block_number = token_pair['block_number'],
                 completed = False)
             for token_pair in token_pairs
         ]
+        
+        self.add_tokens([token for token_pair in token_pairs for token in [token_pair['token0'], token_pair['token1']]])
         
         with self.Session() as session:
             session.add_all(insert_values)
