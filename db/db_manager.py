@@ -17,7 +17,7 @@ class Timetable(Base):
     end = Column(Integer)
     completed = Column(Boolean)
 
-class Tokenpairstable(Base):
+class TokenPairTable(Base):
     __tablename__ = 'token_pairs'
     id = Column(Integer, primary_key=True, autoincrement=True)
     token0 = Column(String, nullable=False)
@@ -336,7 +336,14 @@ class DBManager:
         """Add token pairs to the corresponding table."""
         
         insert_values = [
-            Tokenpairstable(token0 = token_pair['token0'], token1 = token_pair['token1'], fee = token_pair['fee'], pool = token_pair['pool'], block_number = token_pair['block_number'], completed = False)
+            TokenPairTable(
+                token0 = token_pair['token0'],
+                token1 = token_pair['token1'],
+                
+                fee = token_pair['fee'],
+                pool = token_pair['pool'],
+                block_number = token_pair['block_number'],
+                completed = False)
             for token_pair in token_pairs
         ]
         
@@ -347,22 +354,22 @@ class DBManager:
     def fetch_token_pairs(self):
         """Fetch all token pairs from the corresponding table."""
         with self.Session() as session:
-            token_pairs = session.query(Tokenpairstable).all()
+            token_pairs = session.query(TokenPairTable).all()
             return [{"token0": row.token0, "token1": row.token1, "fee": row.fee, "completed": row.completed} for row in token_pairs]
 
     def fetch_incompleted_token_pairs(self) -> List[Dict[str, Union[str, Integer, bool]]]:
         """Fetch all incompleted token pairs from the corresponding table."""
         with self.Session() as session:
-            incompleted_token_pairs = session.query(Tokenpairstable).filter_by(completed=False).all()
+            incompleted_token_pairs = session.query(TokenPairTable).filter_by(completed=False).all()
             return [{"token0": row.token0, "token1": row.token1, "fee": row.fee, "completed": row.completed} for row in incompleted_token_pairs]
 
     def mark_token_pairs_as_complete(self, token_pairs: List[tuple]) -> bool:
         """Mark a token pair as complete."""
         with self.Session() as session:
             for token_pair in token_pairs:
-                record = session.query(Tokenpairstable).filter_by(token0=token_pair[0], token1=token_pair[1], fee=token_pair[2]).first()
+                record = session.query(TokenPairTable).filter_by(token0=token_pair[0], token1=token_pair[1], fee=token_pair[2]).first()
                 if record:
-                    session.query(Tokenpairstable).filter_by(token0=token_pair[0], token1=token_pair[1], fee=token_pair[2]).update({Tokenpairstable.completed: True})
+                    session.query(TokenPairTable).filter_by(token0=token_pair[0], token1=token_pair[1], fee=token_pair[2]).update({TokenPairTable.completed: True})
                 else:
                     return False
             session.commit()
@@ -370,7 +377,7 @@ class DBManager:
     def reset_token_pairs(self):
         """Reset the token pairs completed state"""
         with self.Session() as session:
-            session.query(Tokenpairstable).update({Tokenpairstable.completed: False})
+            session.query(TokenPairTable).update({TokenPairTable.completed: False})
             session.commit()
 
     def add_pool_data(self, pool_data: List[Dict]) -> None:
