@@ -29,7 +29,8 @@ class TokenPairTable(Base):
     
 class TokenTable(Base):
     __tablename__ = 'tokens'
-    address = Column(String, primary_key=True, nullable=False)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    address = Column(String, nullable=False)
     symbol = Column(String, nullable=False)
     name = Column(String, nullable=False)
     decimals = Column(Integer, nullable=False)

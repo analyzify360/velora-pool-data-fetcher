@@ -96,11 +96,11 @@ class PoolDataFetcher:
         print(f'querying uniswap_fetcher with problem: {prob}')
         answer = self.uniswap_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'])
         print(f'received answer')
-        self.generate_signals(answer, time_range['start'], time_range['end'])
+        self.generate_and_save_signals(answer, time_range['start'], time_range['end'])
         print(f'saving data...')
         self.save_pool_data(prob, answer)
     
-    def generate_signals(self, pool_data: dict, start: int, end: int, interval: str = '5min') -> None:
+    def generate_and_save_signals(self, pool_data: dict, start: int, end: int, interval: str = '5min') -> None:
         """
         Generate signals from the pool data.
 
