@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta
 import time
 import pandas as pd
+from utils.utils import hex_to_signed_int
 
 TIME_INTERVAL = 10 * 60
 START_TIMESTAMP = int(datetime(2021, 5, 4).timestamp())
@@ -115,10 +116,10 @@ class PoolDataFetcher:
             return None
         df = pd.DataFrame(data)
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')  # Convert to datetime
-        df['amount'] = df['event'].apply(lambda x: int(x['data']['amount'], 16) if 'amount' in x['data'] else None)
-        df['amount0'] = df['event'].apply(lambda x: int(x['data']['amount0'], 16))
-        df['amount1'] = df['event'].apply(lambda x: int(x['data']['amount1'], 16))
-        df['sqrt_price_x96'] = df['event'].apply(lambda x: int(x['data']['sqrt_price_x96'], 16) if 'sqrt_price_x96' in x['data'] else None)
+        df['amount'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['amount']) if 'amount' in x['data'] else None)
+        df['amount0'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['amount0']))
+        df['amount1'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['amount1']))
+        df['sqrt_price_x96'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['sqrt_price_x96']) if 'sqrt_price_x96' in x['data'] else None)
         df['type'] = df['event'].apply(lambda x: x['type'])
         # Helper function to calculate price from sqrt_price_x96
         def calculate_price(sqrt_price_x96):
