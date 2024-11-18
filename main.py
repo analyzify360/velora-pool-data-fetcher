@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta
 import time
 import pandas as pd
+from utils.utils import hex_to_signed_int
 
 TIME_INTERVAL = 10 * 60
 START_TIMESTAMP = int(datetime(2021, 5, 4).timestamp())
@@ -96,11 +97,11 @@ class PoolDataFetcher:
         print(f'querying uniswap_fetcher with problem: {prob}')
         answer = self.uniswap_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'])
         print(f'received answer')
-        self.generate_signals(answer, time_range['start'], time_range['end'])
+        self.generate_and_save_signals(answer, time_range['start'], time_range['end'])
         print(f'saving data...')
         self.save_pool_data(prob, answer)
     
-    def generate_signals(self, pool_data: dict, start: int, end: int, interval: str = '5min') -> None:
+    def generate_and_save_signals(self, pool_data: dict, start: int, end: int, interval: str = '5min') -> None:
         """
         Generate signals from the pool data.
 
@@ -115,10 +116,10 @@ class PoolDataFetcher:
             return None
         df = pd.DataFrame(data)
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')  # Convert to datetime
-        df['amount'] = df['event'].apply(lambda x: int(x['data']['amount'], 16) if 'amount' in x['data'] else None)
-        df['amount0'] = df['event'].apply(lambda x: int(x['data']['amount0'], 16))
-        df['amount1'] = df['event'].apply(lambda x: int(x['data']['amount1'], 16))
-        df['sqrt_price_x96'] = df['event'].apply(lambda x: int(x['data']['sqrt_price_x96'], 16) if 'sqrt_price_x96' in x['data'] else None)
+        df['amount'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['amount']) if 'amount' in x['data'] else None)
+        df['amount0'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['amount0']))
+        df['amount1'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['amount1']))
+        df['sqrt_price_x96'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['sqrt_price_x96']) if 'sqrt_price_x96' in x['data'] else None)
         df['type'] = df['event'].apply(lambda x: x['type'])
         # Helper function to calculate price from sqrt_price_x96
         def calculate_price(sqrt_price_x96):
