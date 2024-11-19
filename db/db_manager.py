@@ -118,6 +118,7 @@ class DBManager:
         tables = [
             Timetable,
             TokenPairTable,
+            TokenTable,
             SwapEventTable,
             MintEventTable,
             BurnEventTable,
