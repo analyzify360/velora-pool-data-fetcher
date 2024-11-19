@@ -117,7 +117,7 @@ class DBManager:
         inspector = inspect(self.engine)
         tables = [
             Timetable,
-            Tokenpairstable,
+            TokenPairTable,
             SwapEventTable,
             MintEventTable,
             BurnEventTable,
