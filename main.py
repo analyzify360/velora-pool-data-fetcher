@@ -53,7 +53,7 @@ class PoolDataFetcher:
         if not token_pairs:
             self.db_manager.mark_time_range_as_complete(start, end)
             return None
-        return token_pairs[:1]
+        return token_pairs[:10]
     
     def save_pool_data(self, prob: dict, answer: dict) -> None:
         """
