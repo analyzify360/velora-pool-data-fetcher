@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, Column, Boolean, MetaData, Table, String, Integer, Float, Numeric, inspect, insert, text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, OperationalError, ProgrammingError
 from typing import Union, List, Dict
 from utils.config import get_postgres_url
 
@@ -108,15 +108,36 @@ class DBManager:
 
         # Create the table if it doesn't exist
         # Base.metadata.create_all(self.engine)  # This line ensures the table is created if not exists
-        self.check_and_create_tables()
+        self.initialize_database()
 
         # Enable TimescaleDB and convert specific tables to hypertables
         self.create_hypertables()
+
+    def initialize_database(self):
+        try:
+            with self.engine.connect() as conn:
+                inspector = inspect(conn)
+                if not self.compare_schemas(self.engine):
+                    with self.engine.connect() as conn:
+                        inspector = inspect(self.engine)
+                        table_names = inspector.get_table_names()
+                        for table_name in table_names:
+                            try:
+                                if table_name in Base.metadata.tables:
+                                    conn.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
+                                    conn.commit()
+                            except ProgrammingError as e:
+                                print(f"Failed to drop table {table_name}: {e}")
+
+                Base.metadata.create_all(self.engine)
+        except OperationalError as e:
+            print(f"Database connection error: {e}")
+            raise
         
-    def check_and_create_tables(self):
+    def compare_schemas(self, engine):
         # Reflect the database schema
         metadata = MetaData()
-        metadata.reflect(bind=self.engine)
+        metadata.reflect(bind=engine)
 
         existing_tables = set(metadata.tables.keys())
         model_tables = set(Base.metadata.tables.keys())
@@ -124,7 +145,7 @@ class DBManager:
         # Compare table names
         if not model_tables <= existing_tables:  
             return False
-        inspector = inspect(self.engine)
+        inspector = inspect(engine)
 
         for table_name in existing_tables.intersection(model_tables):
             existing_columns = set(c['name'] for c in inspector.get_columns(table_name))
