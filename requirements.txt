@@ -1,5 +1,5 @@
 uniswap-fetcher-rs==0.1.5
-sqlalchemy
-python-dotenv
-psycopg2
-pandas
+sqlalchemy==2.0.36
+python-dotenv==1.0.1
+psycopg2==2.9.10
+pandas==2.2.3
