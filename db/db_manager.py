@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Boolean, MetaData, Table, String, Integer, Float, inspect, insert, text
+from sqlalchemy import create_engine, Column, Boolean, MetaData, Table, String, Integer, Float, Numeric, inspect, insert, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
@@ -94,8 +94,8 @@ class UniswapSignalsTable(Base):
     timestamp = Column(Integer, nullable=False, primary_key=True)
     pool_address = Column(String, nullable=False, primary_key=True)
     price = Column(Float)
-    liquidity = Column(Integer)
-    volume = Column(Integer)
+    liquidity = Column(Numeric)
+    volume = Column(Numeric)
 
 class DBManager:
 
@@ -224,7 +224,7 @@ class DBManager:
                             LIMIT 1;
 
                             -- Substitute 0 price with the last known price, if available
-                            IF last_price != 0.0 THEN
+                            IF last_price.price != 0.0 THEN
                                 NEW.price := last_price.price;
                             END IF;
                         END IF;
@@ -240,7 +240,7 @@ class DBManager:
                             LIMIT 1;
 
                             -- Substitute 0 liquidity with the last known liquidity, if available
-                            IF last_liquidity != 0 THEN
+                            IF last_liquidity.liquidity != 0 THEN
                                 NEW.liquidity := last_liquidity.liquidity;
                             END IF;
                         END IF;
@@ -256,7 +256,7 @@ class DBManager:
                             LIMIT 1;
 
                             -- Substitute 0 volume with the last known volume, if available
-                            IF last_volume != 0 THEN
+                            IF last_volume.volume != 0 THEN
                                 NEW.volume := last_volume.volume;
                             END IF;
                         END IF;
@@ -455,9 +455,9 @@ class DBManager:
             try:
                 values = []
                 for signal in signals:
-                    price = 'NULL' if signal['price'] == None else f"'{signal['price']}'"
-                    liquidity = 'NULL' if signal['liquidity'] == None else f"'{signal['liquidity']}'"
-                    volume = 'NULL' if signal['volume'] == None else f"'{signal['volume']}'"
+                    price = 0.0 if signal['price'] == None else signal['price']
+                    liquidity = 0 if signal['liquidity'] == None else signal['liquidity']
+                    volume = 0 if signal['volume'] == None else signal['volume']
                     values.append(f"('{signal['timestamp']}', '{signal['pool_address']}', {price}, {liquidity}, {volume})")
                 
                 for value in values:
