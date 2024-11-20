@@ -1,4 +1,4 @@
-uniswap_fetcher_rs
+uniswap-fetcher-rs==0.1.5
 sqlalchemy
 python-dotenv
 psycopg2

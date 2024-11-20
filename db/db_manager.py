@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Boolean, MetaData, Table, String, Integer, Numeric, inspect, insert, text
+from sqlalchemy import create_engine, Column, Boolean, MetaData, Table, String, Integer, Float, Numeric, inspect, insert, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
@@ -93,9 +93,9 @@ class UniswapSignalsTable(Base):
     __tablename__ = 'uniswap_signals'
     timestamp = Column(Integer, nullable=False, primary_key=True)
     pool_address = Column(String, nullable=False, primary_key=True)
-    price = Column(String)
-    liquidity = Column(String)
-    volume = Column(String)
+    price = Column(Float)
+    liquidity = Column(Numeric)
+    volume = Column(Numeric)
 
 class DBManager:
 
@@ -214,49 +214,49 @@ class DBManager:
                         last_volume RECORD;
                     BEGIN
                         -- Check and retrieve the last known price for this pool_address if NEW.price is NULL
-                        IF NEW.price IS NULL THEN
+                        IF NEW.price = 0.0 THEN
                             SELECT price
                             INTO last_price
                             FROM uniswap_signals
                             WHERE pool_address = NEW.pool_address
-                            AND price IS NOT NULL
+                            AND price != 0.0
                             ORDER BY timestamp DESC
                             LIMIT 1;
 
-                            -- Substitute NULL price with the last known price, if available
-                            IF last_price IS NOT NULL THEN
+                            -- Substitute 0 price with the last known price, if available
+                            IF last_price.price != 0.0 THEN
                                 NEW.price := last_price.price;
                             END IF;
                         END IF;
 
-                        -- Check and retrieve the last known liquidity for this pool_address if NEW.liquidity is NULL
-                        IF NEW.liquidity IS NULL THEN
+                        -- Check and retrieve the last known liquidity for this pool_address if NEW.liquidity is 0
+                        IF NEW.liquidity = 0 THEN
                             SELECT liquidity
                             INTO last_liquidity
                             FROM uniswap_signals
                             WHERE pool_address = NEW.pool_address
-                            AND liquidity IS NOT NULL
+                            AND liquidity != 0
                             ORDER BY timestamp DESC
                             LIMIT 1;
 
-                            -- Substitute NULL liquidity with the last known liquidity, if available
-                            IF last_liquidity IS NOT NULL THEN
+                            -- Substitute 0 liquidity with the last known liquidity, if available
+                            IF last_liquidity.liquidity != 0 THEN
                                 NEW.liquidity := last_liquidity.liquidity;
                             END IF;
                         END IF;
 
-                        -- Check and retrieve the last known volume for this pool_address if NEW.volume is NULL
-                        IF NEW.volume IS NULL THEN
+                        -- Check and retrieve the last known volume for this pool_address if NEW.volume is 0
+                        IF NEW.volume = 0 THEN
                             SELECT volume
                             INTO last_volume
                             FROM uniswap_signals
                             WHERE pool_address = NEW.pool_address
-                            AND volume IS NOT NULL
+                            AND volume != 0
                             ORDER BY timestamp DESC
                             LIMIT 1;
 
-                            -- Substitute NULL volume with the last known volume, if available
-                            IF last_volume IS NOT NULL THEN
+                            -- Substitute 0 volume with the last known volume, if available
+                            IF last_volume.volume != 0 THEN
                                 NEW.volume := last_volume.volume;
                             END IF;
                         END IF;
@@ -386,7 +386,7 @@ class DBManager:
         """Fetch all incompleted token pairs from the corresponding table."""
         with self.Session() as session:
             incompleted_token_pairs = session.query(TokenPairTable).filter_by(completed=False).all()
-            return [{"token0": row.token0, "token1": row.token1, "fee": row.fee, "completed": row.completed} for row in incompleted_token_pairs]
+            return [{"token0": row.token0, "token1": row.token1, "fee": row.fee, "pool_address": row.pool, "completed": row.completed} for row in incompleted_token_pairs]
 
     def mark_token_pairs_as_complete(self, token_pairs: List[tuple]) -> bool:
         """Mark a token pair as complete."""
@@ -455,9 +455,9 @@ class DBManager:
             try:
                 values = []
                 for signal in signals:
-                    price = 'NULL' if signal['price'] == None else f"'{signal['price']}'"
-                    liquidity = 'NULL' if signal['liquidity'] == None else f"'{signal['liquidity']}'"
-                    volume = 'NULL' if signal['volume'] == None else f"'{signal['volume']}'"
+                    price = 0.0 if signal['price'] == None else signal['price']
+                    liquidity = 0 if signal['liquidity'] == None else signal['liquidity']
+                    volume = 0 if signal['volume'] == None else signal['volume']
                     values.append(f"('{signal['timestamp']}', '{signal['pool_address']}', {price}, {liquidity}, {volume})")
                 
                 for value in values:
