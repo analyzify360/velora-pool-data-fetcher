@@ -1,13 +1,14 @@
 from uniswap_fetcher_rs  import UniswapFetcher
 from db.db_manager import DBManager
 import os
-from datetime import datetime, timedelta
+from collections import defaultdict
+from datetime import datetime, timezone
 import time
 import pandas as pd
 from utils.utils import hex_to_signed_int
 
 TIME_INTERVAL = 10 * 60
-START_TIMESTAMP = int(datetime(2021, 5, 4).timestamp())
+START_TIMESTAMP = int(datetime(2021, 5, 4).replace(tzinfo=timezone.utc).timestamp())
 DAY_SECONDS = 86400
 
 
@@ -27,7 +28,7 @@ class PoolDataFetcher:
         else:
             start = last_time_range["end"]
             end = last_time_range["end"] + DAY_SECONDS
-            
+        print(f"Adding new timetable entry between {start} and {end}")
         self.db_manager.add_timetable_entry(start, end)
         
         print(f"Fetching token pairs between {start} and {end}")
@@ -53,7 +54,7 @@ class PoolDataFetcher:
         if not token_pairs:
             self.db_manager.mark_time_range_as_complete(start, end)
             return None
-        return token_pairs[:10]
+        return token_pairs[:2]
     
     def save_pool_data(self, prob: dict, answer: dict) -> None:
         """
@@ -83,25 +84,26 @@ class PoolDataFetcher:
             return None
         
         req_token_pairs = []
+        req_pool_addresses = []
         for token_pair in token_pairs:
             req_token_pairs.append((token_pair['token0'], token_pair['token1'], token_pair['fee']))
+            req_pool_addresses.append(token_pair['pool_address'])
 
-        return {"token_pairs": req_token_pairs, "start_datetime": int(time_range['start']), "end_datetime": int(time_range['end'])}
+        return {"token_pairs": req_token_pairs, "pool_addresses": req_pool_addresses, "start_datetime": int(time_range['start']), "end_datetime": int(time_range['end'])}
 
     def process_time_range(self, time_range: dict):
         print(f'Processing time range between {time_range["start"]} and {time_range["end"]}')
         prob = self.get_next_token_pairs(time_range)
         if prob is None:
             return None
-            
         print(f'querying uniswap_fetcher with problem: {prob}')
         answer = self.uniswap_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'])
         print(f'received answer')
-        self.generate_and_save_signals(answer, time_range['start'], time_range['end'])
+        self.generate_and_save_signals(answer, prob['pool_addresses'], time_range['start'], time_range['end'])
         print(f'saving data...')
         self.save_pool_data(prob, answer)
     
-    def generate_and_save_signals(self, pool_data: dict, start: int, end: int, interval: str = '5min') -> None:
+    def generate_and_save_signals(self, pool_data: dict, prob_pool_addresses: list, start: int, end: int, interval: int = 300) -> None:
         """
         Generate signals from the pool data.
 
@@ -114,39 +116,52 @@ class PoolDataFetcher:
         data = pool_data.get("data", None)
         if not data:
             return None
-        df = pd.DataFrame(data)
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')  # Convert to datetime
-        df['amount'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['amount']) if 'amount' in x['data'] else None)
-        df['amount0'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['amount0']))
-        df['amount1'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['amount1']))
-        df['sqrt_price_x96'] = df['event'].apply(lambda x: hex_to_signed_int(x['data']['sqrt_price_x96']) if 'sqrt_price_x96' in x['data'] else None)
-        df['type'] = df['event'].apply(lambda x: x['type'])
-        # Helper function to calculate price from sqrt_price_x96
-        def calculate_price(sqrt_price_x96):
-            res = (sqrt_price_x96 / (2**96)) ** 2
-            return res
-
-        # Calculate price of token0 based on token1 using sqrt_price_x96
-        df['price'] = df['sqrt_price_x96'].apply(
-            lambda x: calculate_price(x) if x is not None else None
-        )
-        
-        # Replace NaN values with None (NULL in database)
-        
-        for pool_address, group in df.groupby('pool_address'):
-            metrics = self.calculate_metrics_by_interval(group[group['type'] == 'swap'], group[group['type'] == 'mint'], group[group['type'] == 'burn'], start, end, interval)
+        aggregated_data = defaultdict(lambda: defaultdict(list))
+        datetime_series = pd.date_range(start=datetime.fromtimestamp(start + interval, tz=timezone.utc), end=datetime.fromtimestamp(end, tz=timezone.utc), freq=f'{interval}s')
+        for pool_address in prob_pool_addresses:
+            for date_time in datetime_series:
+                timestamp = int(date_time.timestamp())
+                key = (pool_address, timestamp)
+                aggregated_data[key]["amount"] = []
+                aggregated_data[key]["amount0"] = []
+                aggregated_data[key]["amount1"] = []
+                aggregated_data[key]["sqrt_price_x96"] = []
+                aggregated_data[key]["type"] = None
+        for event in data:
+            # print(f"timestamp: {event.get('timestamp')}")
+            round_timestamp = event.get("timestamp") // interval * interval
+            key = (event.get("pool_address"), round_timestamp)
+            if not key in aggregated_data:
+                raise Exception(f"Key {key} not found in aggregated_data")
+            if event.get("event").get("type") == "swap":
+                aggregated_data[key]["sqrt_price_x96"].append(event.get("event").get("data").get("sqrt_price_x96"))
+            else:
+                aggregated_data[key]["amount"].append(hex_to_signed_int(event.get("event").get("data").get("amount", "0x0")))
+            aggregated_data[key]["amount0"].append(hex_to_signed_int(event.get("event").get("data").get("amount0")))
+            aggregated_data[key]["amount1"].append(hex_to_signed_int(event.get("event").get("data").get("amount1")))
+            aggregated_data[key]["type"] = event.get("event").get("type")
             
-            signals = [
-                {
-                    'timestamp': int(row['timestamp'].timestamp()),
-                    'price': row['price'] if pd.notna(row['price']) else None,
-                    'volume': row['volume'] if pd.notna(row['volume']) else None,
-                    'liquidity': row['net_liquidity'] if pd.notna(row['net_liquidity']) else None,
-                    'pool_address': pool_address
-                }
-                for __, row in metrics.iterrows()
-            ]
-            self.db_manager.add_uniswap_signals(signals)
+        # print(f'printing aggregated data: {aggregated_data}')
+        apply_abs = lambda x: [abs(i) for i in x]
+        calc_price = lambda x: [float((hex_to_signed_int(i)) / (2**96)) ** 2 for i in x]
+        
+        metrics = []
+        for key, value in aggregated_data.items():
+            pool_address, timestamp = key
+            volume = sum(apply_abs(value["amount0"])) + sum(value["amount1"])
+            liquidity = sum(value["amount"])
+            if len(value["sqrt_price_x96"]) == 0.0:
+                price = 0.0
+            else:
+                price = sum(calc_price(value["sqrt_price_x96"])) / len(value["sqrt_price_x96"])
+            metrics.append({
+                "pool_address": pool_address,
+                "timestamp": timestamp,
+                "volume": volume,
+                "liquidity": liquidity,
+                "price": price,
+            })
+        self.db_manager.add_uniswap_signals(metrics)
 
     # Define a function to calculate metrics per interval
     def calculate_metrics_by_interval(self, swap_events, mint_events, burn_events, start, end, interval):
@@ -170,7 +185,7 @@ class PoolDataFetcher:
         volume.name = 'volume'
         
         # Liquidity from Mint and Burn Events
-        mint_resampled = mint_events.set_index('timestamp').reindex(date_range, method='nearest').resample(interval)['amount'].sum().fillna(0)
+        mint_resampled = mint_events.set_index('timestamp').reindex(date_range, method='nearest').resample(interval)['amount'].sum().fillna(0).infer_objects(copy=False)
         burn_resampled = burn_events.set_index('timestamp').reindex(date_range, method='nearest').resample(interval)['amount'].sum().fillna(0)
         
         # Net liquidity change = Mints - Burns
