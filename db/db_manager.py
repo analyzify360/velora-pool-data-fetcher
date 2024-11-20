@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Boolean, MetaData, Table, String, Integer, Float, Numeric, inspect, insert, text
+from sqlalchemy import create_engine, Column, Boolean, MetaData, Table, String, Integer, Float, Numeric, inspect, insert, text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
@@ -114,53 +114,38 @@ class DBManager:
         self.create_hypertables()
         
     def check_and_create_tables(self):
+        # Reflect the database schema
+        metadata = MetaData()
+        metadata.reflect(bind=self.engine)
+
+        existing_tables = set(metadata.tables.keys())
+        model_tables = set(Base.metadata.tables.keys())
+        print("compare_schemas start")
+        # Compare table names
+        if not model_tables <= existing_tables:  
+            return False
         inspector = inspect(self.engine)
-        tables = [
-            Timetable,
-            TokenPairTable,
-            TokenTable,
-            SwapEventTable,
-            MintEventTable,
-            BurnEventTable,
-            CollectEventTable,
-            UniswapSignalsTable
-        ]
 
-        for table in tables:
-            table_name = table.__tablename__
-            
-            if inspector.has_table(table_name):
-                # Get current table columns
-                existing_columns = inspector.get_columns(table_name)
-                existing_column_names = {col['name']: col for col in existing_columns}
+        for table_name in existing_tables.intersection(model_tables):
+            existing_columns = set(c['name'] for c in inspector.get_columns(table_name))
+            model_columns = set(c.name for c in Base.metadata.tables[table_name].columns)
 
-                # Define expected columns based on current schema
-                current_columns = {col.name: col for col in table.__table__.columns}
+            # Compare columns
+            if existing_columns != model_columns:
+                return False
 
-                # Compare existing schema with current schema
-                schema_mismatch = False
-                for column_name, column in current_columns.items():
-                    if column_name not in existing_column_names:
-                        schema_mismatch = True
-                        print(f"Column {column_name} does not exist in {table_name}.")
-                        break
-                    existing = existing_column_names[column_name]
-                    if (existing['type'].__class__.__name__ != column.type.__class__.__name__ or
-                        existing['nullable'] != column.nullable):
-                        schema_mismatch = True
-                        print(f"Schema mismatch detected for {column_name} in {table_name}.")
-                        break
-                
-                if schema_mismatch:
-                    print(f"Dropping and recreating table {table_name}.")
-                    Base.metadata.drop_all(self.engine, [table.__table__])
-                    Base.metadata.create_all(self.engine, [table.__table__])
-                else:
-                    print(f"Table {table_name} exists with the same schema. No action needed.")
-            else:
-                print(f"Table {table_name} does not exist. Creating it.")
-                Base.metadata.create_all(self.engine, [table.__table__])
-        print('all tables created successfully')
+            # Add more detailed comparison logic if needed
+            existing_constraints = {c['name']: c for c in inspector.get_unique_constraints(table_name)}
+            model_constraints = {c.name: c for c in Base.metadata.tables[table_name].constraints if isinstance(c, UniqueConstraint)}
+
+            if set(existing_constraints.keys()) != set(model_constraints.keys()):
+                return False
+
+            for name in existing_constraints.keys():
+                if existing_constraints[name]['column_names'] != list(model_constraints[name].columns.keys()):
+                    return False
+
+        return True
 
     def create_hypertables(self):
         """Enable TimescaleDB extension and convert tables to hypertables."""
