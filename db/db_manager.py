@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Boolean, MetaData, Table, String, Integer, Float, Numeric, inspect, insert, text
+from sqlalchemy import create_engine, Column, Boolean, MetaData, Table, String, Integer, Float, Numeric, inspect, insert, text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
@@ -121,6 +121,16 @@ class DBManager:
         self.create_hypertables()
         
     def check_and_create_tables(self):
+        # Reflect the database schema
+        metadata = MetaData()
+        metadata.reflect(bind=self.engine)
+
+        existing_tables = set(metadata.tables.keys())
+        model_tables = set(Base.metadata.tables.keys())
+        print("compare_schemas start")
+        # Compare table names
+        if not model_tables <= existing_tables:  
+            return False
         inspector = inspect(self.engine)
         tables = [
             Timetable,
@@ -169,6 +179,27 @@ class DBManager:
                 print(f"Table {table_name} does not exist. Creating it.")
                 Base.metadata.create_all(self.engine, [table.__table__])
         print('all tables created successfully')
+
+        for table_name in existing_tables.intersection(model_tables):
+            existing_columns = set(c['name'] for c in inspector.get_columns(table_name))
+            model_columns = set(c.name for c in Base.metadata.tables[table_name].columns)
+
+            # Compare columns
+            if existing_columns != model_columns:
+                return False
+
+            # Add more detailed comparison logic if needed
+            existing_constraints = {c['name']: c for c in inspector.get_unique_constraints(table_name)}
+            model_constraints = {c.name: c for c in Base.metadata.tables[table_name].constraints if isinstance(c, UniqueConstraint)}
+
+            if set(existing_constraints.keys()) != set(model_constraints.keys()):
+                return False
+
+            for name in existing_constraints.keys():
+                if existing_constraints[name]['column_names'] != list(model_constraints[name].columns.keys()):
+                    return False
+
+        return True
 
     def create_hypertables(self):
         """Enable TimescaleDB extension and convert tables to hypertables."""
