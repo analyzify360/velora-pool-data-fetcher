@@ -41,6 +41,7 @@ class PoolTable(Base):
     liquidity_24h = Column(Numeric)
     volume_24h = Column(Numeric)
     price_range_24h = Column(String)
+    events_count_24h = Column(Integer)
 
 class SwapEventTable(Base):
     __tablename__ = 'swap_event'
@@ -478,12 +479,13 @@ class DBManager:
                 for pool_address, data in metrics.items():
                     conn.execute(text(
                         f"""
-                        INSERT INTO pools (pool_address, liquidity_24h, volume_24h, price_range_24h)
-                        VALUES ('{pool_address}', {data['liquidity']}, {data['volume']}, '{data['price_low']}-{data['price_high']}')
+                        INSERT INTO pools (pool_address, liquidity_24h, volume_24h, price_range_24h, events_count_24h)
+                        VALUES ('{pool_address}', {data['liquidity']}, {data['volume']}, '{data['price_low']}-{data['price_high']}', {data['events_count_24h']})
                         ON CONFLICT (pool_address) DO UPDATE
                         SET price_range_24h = EXCLUDED.price_range_24h,
                             liquidity_24h = EXCLUDED.liquidity_24h,
-                            volume_24h = EXCLUDED.volume_24h;
+                            volume_24h = EXCLUDED.volume_24h,
+                            events_count_24h = EXCLUDED.events_count_24h;
                         """
                     ))
                     conn.commit()
