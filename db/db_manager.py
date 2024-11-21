@@ -463,19 +463,25 @@ class DBManager:
             try:
                 values = []
                 for signal in signals:
-                    price = 0.0 if signal['price'] == None else signal['price']
-                    liquidity = 0 if signal['liquidity'] == None else signal['liquidity']
-                    volume = 0 if signal['volume'] == None else signal['volume']
-                    values.append(f"('{signal['timestamp']}', '{signal['pool_address']}', {price}, {liquidity}, {volume})")
+                    price = 0.0 if signal['price'] is None else signal['price']
+                    liquidity = 0 if signal['liquidity'] is None else signal['liquidity']
+                    volume = 0 if signal['volume'] is None else signal['volume']
+                    values.append({
+                        'timestamp': signal['timestamp'],
+                        'pool_address': signal['pool_address'],
+                        'price': price,
+                        'liquidity': liquidity,
+                        'volume': volume
+                    })
                 
-                for value in values:
-                    conn.execute(text(
-                        f"""
+                # Use bulk insert
+                conn.execute(
+                    text("""
                         INSERT INTO uniswap_signals (timestamp, pool_address, price, liquidity, volume)
-                        VALUES {value}
-                        """
-                    ))
-                    conn.commit()
+                        VALUES (:timestamp, :pool_address, :price, :liquidity, :volume)
+                    """), values
+                )
+                conn.commit()
             except SQLAlchemyError as e:
                 print(f"An error occurred: {e}")
     

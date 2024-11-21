@@ -67,7 +67,6 @@ class PoolDataFetcher:
         token_pairs = prob.get("token_pairs", None)        
         miner_data = answer.get("data", None)
         print(f'saving pool data to database ...')
-        
         self.db_manager.add_pool_data(miner_data)
         self.db_manager.mark_token_pairs_as_complete(token_pairs)
         print(f'pool data saved successfully.')
@@ -113,6 +112,8 @@ class PoolDataFetcher:
             end: The end datetime for aggregation.
             interval: The interval for aggregation.
         """
+        print(f'generating and saving signals...')
+        start_time = datetime.now()
         data = pool_data.get("data", None)
         if not data:
             return None
@@ -176,8 +177,14 @@ class PoolDataFetcher:
                 "liquidity": liquidity,
                 "price": price,
             })
+        print(f"time consumed: {datetime.now() - start_time}")
+        print(f'saving metrics to database...')
         self.db_manager.add_or_update_daily_metrics(daily_metrics)
+        print(f"daily metric time consumed: {datetime.now() - start_time}")
+        print(f'saving signals to database...')
+        print(f'length of metrics: {len(metrics)}')
         self.db_manager.add_uniswap_signals(metrics)
+        print(f'metrics saved successfully.')
 
     # Define a function to calculate metrics per interval
     def calculate_metrics_by_interval(self, swap_events, mint_events, burn_events, start, end, interval):
