@@ -140,7 +140,7 @@ class DBManager:
         except OperationalError as e:
             print(f"Database connection error: {e}")
             raise
-        
+   
     def compare_schemas(self, engine):
         # Reflect the database schema
         metadata = MetaData()
@@ -153,53 +153,6 @@ class DBManager:
         if not model_tables <= existing_tables:  
             return False
         inspector = inspect(engine)
-        tables = [
-            Timetable,
-            TokenPairTable,
-            TokenTable,
-            PoolTable,
-            SwapEventTable,
-            MintEventTable,
-            BurnEventTable,
-            CollectEventTable,
-            UniswapSignalsTable
-        ]
-
-        for table in tables:
-            table_name = table.__tablename__
-            
-            if inspector.has_table(table_name):
-                # Get current table columns
-                existing_columns = inspector.get_columns(table_name)
-                existing_column_names = {col['name']: col for col in existing_columns}
-
-                # Define expected columns based on current schema
-                current_columns = {col.name: col for col in table.__table__.columns}
-
-                # Compare existing schema with current schema
-                schema_mismatch = False
-                for column_name, column in current_columns.items():
-                    if column_name not in existing_column_names:
-                        schema_mismatch = True
-                        print(f"Column {column_name} does not exist in {table_name}.")
-                        break
-                    existing = existing_column_names[column_name]
-                    if (existing['type'].__class__.__name__ != column.type.__class__.__name__ or
-                        existing['nullable'] != column.nullable):
-                        schema_mismatch = True
-                        print(f"Schema mismatch detected for {column_name} in {table_name}.")
-                        break
-                
-                if schema_mismatch:
-                    print(f"Dropping and recreating table {table_name}.")
-                    Base.metadata.drop_all(self.engine, [table.__table__])
-                    Base.metadata.create_all(self.engine, [table.__table__])
-                else:
-                    print(f"Table {table_name} exists with the same schema. No action needed.")
-            else:
-                print(f"Table {table_name} does not exist. Creating it.")
-                Base.metadata.create_all(self.engine, [table.__table__])
-        print('all tables created successfully')
 
         for table_name in existing_tables.intersection(model_tables):
             existing_columns = set(c['name'] for c in inspector.get_columns(table_name))
@@ -221,56 +174,6 @@ class DBManager:
                     return False
 
         return True
-        
-    def check_and_create_tables(self):
-        inspector = inspect(self.engine)
-        tables = [
-            Timetable,
-            TokenPairTable,
-            TokenTable,
-            PoolTable,
-            SwapEventTable,
-            MintEventTable,
-            BurnEventTable,
-            CollectEventTable,
-            UniswapSignalsTable
-        ]
-
-        for table in tables:
-            table_name = table.__tablename__
-            
-            if inspector.has_table(table_name):
-                # Get current table columns
-                existing_columns = inspector.get_columns(table_name)
-                existing_column_names = {col['name']: col for col in existing_columns}
-
-                # Define expected columns based on current schema
-                current_columns = {col.name: col for col in table.__table__.columns}
-
-                # Compare existing schema with current schema
-                schema_mismatch = False
-                for column_name, column in current_columns.items():
-                    if column_name not in existing_column_names:
-                        schema_mismatch = True
-                        print(f"Column {column_name} does not exist in {table_name}.")
-                        break
-                    existing = existing_column_names[column_name]
-                    if (existing['type'].__class__.__name__ != column.type.__class__.__name__ or
-                        existing['nullable'] != column.nullable):
-                        schema_mismatch = True
-                        print(f"Schema mismatch detected for {column_name} in {table_name}.")
-                        break
-                
-                if schema_mismatch:
-                    print(f"Dropping and recreating table {table_name}.")
-                    Base.metadata.drop_all(self.engine, [table.__table__])
-                    Base.metadata.create_all(self.engine, [table.__table__])
-                else:
-                    print(f"Table {table_name} exists with the same schema. No action needed.")
-            else:
-                print(f"Table {table_name} does not exist. Creating it.")
-                Base.metadata.create_all(self.engine, [table.__table__])
-        print('all tables created successfully')
 
     def create_hypertables(self):
         """Enable TimescaleDB extension and convert tables to hypertables."""
