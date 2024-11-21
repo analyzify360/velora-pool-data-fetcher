@@ -54,9 +54,9 @@ class PoolDataFetcher:
         if not token_pairs:
             self.db_manager.mark_time_range_as_complete(start, end)
             return None
-        return token_pairs[:2]
+        return token_pairs[:10]
     
-    def save_pool_data(self, prob: dict, answer: dict) -> None:
+    def save_pool_and_signals_data(self, prob: dict, answer: dict, signals: tuple) -> None:
         """
         Save the pool data to the database.
         
@@ -66,7 +66,9 @@ class PoolDataFetcher:
         """
         token_pairs = prob.get("token_pairs", None)        
         miner_data = answer.get("data", None)
+        metrics, daily_metrics = signals
         print(f'saving pool data to database ...')
+        
         self.db_manager.add_pool_data(miner_data)
         self.db_manager.mark_token_pairs_as_complete(token_pairs)
         print(f'pool data saved successfully.')
@@ -98,11 +100,11 @@ class PoolDataFetcher:
         print(f'querying uniswap_fetcher with problem: {prob}')
         answer = self.uniswap_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'])
         print(f'received answer')
-        self.generate_and_save_signals(answer, prob['pool_addresses'], time_range['start'], time_range['end'])
+        signals = self.generate_signals(answer, prob['pool_addresses'], time_range['start'], time_range['end'])
         print(f'saving data...')
-        self.save_pool_data(prob, answer)
+        self.save_pool_and_signals_data(prob, answer, signals)
     
-    def generate_and_save_signals(self, pool_data: dict, prob_pool_addresses: list, start: int, end: int, interval: int = 300) -> None:
+    def generate_signals(self, pool_data: dict, prob_pool_addresses: list, start: int, end: int, interval: int = 300) -> tuple:
         """
         Generate signals from the pool data.
 
@@ -112,8 +114,6 @@ class PoolDataFetcher:
             end: The end datetime for aggregation.
             interval: The interval for aggregation.
         """
-        print(f'generating and saving signals...')
-        start_time = datetime.now()
         data = pool_data.get("data", None)
         if not data:
             return None
@@ -177,51 +177,9 @@ class PoolDataFetcher:
                 "liquidity": liquidity,
                 "price": price,
             })
-        print(f"time consumed: {datetime.now() - start_time}")
-        print(f'saving metrics to database...')
-        self.db_manager.add_or_update_daily_metrics(daily_metrics)
-        print(f"daily metric time consumed: {datetime.now() - start_time}")
-        print(f'saving signals to database...')
-        print(f'length of metrics: {len(metrics)}')
-        self.db_manager.add_uniswap_signals(metrics)
-        print(f'metrics saved successfully.')
-
-    # Define a function to calculate metrics per interval
-    def calculate_metrics_by_interval(self, swap_events, mint_events, burn_events, start, end, interval):
-        # Create a date range for the custom timestamp
-        date_range = pd.date_range(start=datetime.fromtimestamp(start), end=datetime.fromtimestamp(end), freq=interval)
+            
+        return metrics, daily_metrics
         
-        swap_events = swap_events.groupby('timestamp').agg({'amount0': 'sum', 'amount1': 'sum', 'price': 'mean'}).reset_index()
-        mint_events = mint_events.groupby('timestamp').agg({'amount': 'sum'}).reset_index()
-        burn_events = burn_events.groupby('timestamp').agg({'amount': 'sum'}).reset_index()
-        
-        # Volume and Price from Swap Events
-        swap_resampled = swap_events.set_index('timestamp').reindex(date_range, method='nearest').resample(interval)
-        
-        # Calculate price using sqrt_price_x96
-        price_sqrt = swap_resampled['price'].mean()
-        
-        # Calculate volume as the sum of absolute amounts
-        volume0 = swap_resampled['amount0'].sum().abs()  # Volume calculation
-        volume1 = swap_resampled['amount1'].sum().abs() # Volume calculation
-        volume = volume0 + volume1
-        volume.name = 'volume'
-        
-        # Liquidity from Mint and Burn Events
-        mint_resampled = mint_events.set_index('timestamp').reindex(date_range, method='nearest').resample(interval)['amount'].sum().fillna(0).infer_objects(copy=False)
-        burn_resampled = burn_events.set_index('timestamp').reindex(date_range, method='nearest').resample(interval)['amount'].sum().fillna(0)
-        
-        # Net liquidity change = Mints - Burns
-        net_liquidity = (mint_resampled - burn_resampled).cumsum()
-        net_liquidity.name = 'net_liquidity'
-        
-        # Combine all metrics
-        metrics = pd.concat([price_sqrt, volume, net_liquidity], axis=1)
-        metrics.index.name = 'timestamp'
-        metrics.reset_index(inplace=True)
-        
-        return metrics
-
     def run(self):
         while True:
             time_range = self.db_manager.fetch_last_time_range()
