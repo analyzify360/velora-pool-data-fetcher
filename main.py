@@ -170,6 +170,7 @@ class PoolDataFetcher:
             
             if pool_address not in daily_metrics:
                 daily_metrics[pool_address] = {
+                    "events_count": 0,
                     "volume": volume,
                     "liquidity": liquidity,
                     "price_high": price,
