@@ -146,6 +146,7 @@ class PoolDataFetcher:
         calc_price = lambda x: [float((hex_to_signed_int(i)) / (2**96)) ** 2 for i in x]
         
         metrics = []
+        daily_metrics = {}
         for key, value in aggregated_data.items():
             pool_address, timestamp = key
             volume = sum(apply_abs(value["amount0"])) + sum(value["amount1"])
@@ -154,6 +155,21 @@ class PoolDataFetcher:
                 price = 0.0
             else:
                 price = sum(calc_price(value["sqrt_price_x96"])) / len(value["sqrt_price_x96"])
+            
+            if pool_address not in daily_metrics:
+                daily_metrics[pool_address] = {
+                    "timestamp": timestamp,
+                    "volume": volume,
+                    "liquidity": liquidity,
+                    "price_high": price,
+                    "price_low": price,
+                }
+            else:
+                daily_metrics[pool_address]["volume"] += volume
+                daily_metrics[pool_address]["liquidity"] += liquidity
+                daily_metrics[pool_address]["price_high"] = max(daily_metrics[pool_address]["price_high"], price)
+                daily_metrics[pool_address]["price_low"] = min(daily_metrics[pool_address]["price_low"], price)
+            
             metrics.append({
                 "pool_address": pool_address,
                 "timestamp": timestamp,
