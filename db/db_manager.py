@@ -35,6 +35,13 @@ class TokenTable(Base):
     name = Column(String, nullable=False)
     decimals = Column(Integer, nullable=False)
 
+class PoolTable(Base):
+    __tablename__ = 'pools'
+    pool_address = Column(String, primary_key=True)
+    liquidity_24h = Column(Numeric)
+    volume_24h = Column(Numeric)
+    price_range_24h = Column(String)
+
 class SwapEventTable(Base):
     __tablename__ = 'swap_event'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -133,7 +140,7 @@ class DBManager:
         except OperationalError as e:
             print(f"Database connection error: {e}")
             raise
-        
+   
     def compare_schemas(self, engine):
         # Reflect the database schema
         metadata = MetaData()
@@ -411,68 +418,75 @@ class DBManager:
             session.query(TokenPairTable).update({TokenPairTable.completed: False})
             session.commit()
 
-    def add_pool_data(self, pool_data: List[Dict]) -> None:
-        """Add pool data to the pool data table and related event tables."""
+    def add_pool_and_signals_data(self, pool_data: List[Dict], signals: List[Dict]) -> None:
+        """Add pool data to the pool data table and related event tables, and then add Uniswap signals."""
 
-        # Add the swap event data to the swap event table
-        swap_event_data = [
-            SwapEventTable(transaction_hash=data['transaction_hash'], pool_address = data['pool_address'], block_number=data['block_number'], **data['event']['data'])
-            for data in pool_data if data['event']['type'] == 'swap'
-        ]
-        if swap_event_data:
-            with self.Session() as session:
-                session.add_all(swap_event_data)
+        with self.Session() as session:
+            try:
+                # Add the swap event data to the swap event table
+                swap_event_data = [
+                    SwapEventTable(transaction_hash=data['transaction_hash'], pool_address=data['pool_address'], block_number=data['block_number'], **data['event']['data'])
+                    for data in pool_data if data['event']['type'] == 'swap'
+                ]
+                if swap_event_data:
+                    session.add_all(swap_event_data)
+
+                # Add the mint event data to the mint event table
+                mint_event_data = [
+                    MintEventTable(transaction_hash=data['transaction_hash'], pool_address=data['pool_address'], block_number=data['block_number'], **data['event']['data'])
+                    for data in pool_data if data['event']['type'] == 'mint'
+                ]
+                if mint_event_data:
+                    session.add_all(mint_event_data)
+
+                # Add the burn event data to the burn event table
+                burn_event_data = [
+                    BurnEventTable(transaction_hash=data['transaction_hash'], pool_address=data['pool_address'], block_number=data['block_number'], **data['event']['data'])
+                    for data in pool_data if data['event']['type'] == 'burn'
+                ]
+                if burn_event_data:
+                    session.add_all(burn_event_data)
+
+                # Add the collect event data to the collect event table
+                collect_event_data = [
+                    CollectEventTable(transaction_hash=data['transaction_hash'], pool_address=data['pool_address'], block_number=data['block_number'], **data['event']['data'])
+                    for data in pool_data if data['event']['type'] == 'collect'
+                ]
+                if collect_event_data:
+                    session.add_all(collect_event_data)
+
+                # Add Uniswap signals
+                signals_data = [
+                    UniswapSignalsTable(timestamp=signal['timestamp'], pool_address=signal['pool_address'], price=signal['price'], liquidity=signal['liquidity'], volume=signal['volume'])
+                    for signal in signals
+                ]
+                if signals_data:
+                    session.add_all(signals_data)
+
+                # Commit the transaction if all operations succeed
                 session.commit()
 
-        # Add the mint event data to the mint event table
-        mint_event_data = [
-            MintEventTable(transaction_hash=data['transaction_hash'], pool_address = data['pool_address'], block_number=data['block_number'], **data['event']['data'])
-            for data in pool_data if data['event']['type'] == 'mint'
-        ]
-        if mint_event_data:
-            with self.Session() as session:
-                session.add_all(mint_event_data)
-                session.commit()
-
-        # Add the burn event data to the burn event table
-        burn_event_data = [
-            BurnEventTable(transaction_hash=data['transaction_hash'], pool_address = data['pool_address'], block_number=data['block_number'], **data['event']['data'])
-            for data in pool_data if data['event']['type'] == 'burn'
-        ]
-        if burn_event_data:
-            with self.Session() as session:
-                session.add_all(burn_event_data)
-                session.commit()
-
-        # Add the collect event data to the collect event table
-        collect_event_data = [
-            CollectEventTable(transaction_hash=data['transaction_hash'], pool_address = data['pool_address'], block_number=data['block_number'], **data['event']['data'])
-            for data in pool_data if data['event']['type'] == 'collect'
-        ]
-        if collect_event_data:
-            with self.Session() as session:
-                session.add_all(collect_event_data)
-                session.commit()
+            except SQLAlchemyError as e:
+                session.rollback()
+                print(f"An error occurred: {e}")
     
-    def add_uniswap_signals(self, signals: List[Dict]) -> None:
-        """Add Uniswap signals to the corresponding table."""
+    def add_or_update_daily_metrics(self, metrics: dict) -> None:
+        """Add or update daily metrics."""
         with self.engine.connect() as conn:
             conn.execution_options(isolation_level="AUTOCOMMIT")
             try:
-                values = []
-                for signal in signals:
-                    price = 0.0 if signal['price'] == None else signal['price']
-                    liquidity = 0 if signal['liquidity'] == None else signal['liquidity']
-                    volume = 0 if signal['volume'] == None else signal['volume']
-                    values.append(f"('{signal['timestamp']}', '{signal['pool_address']}', {price}, {liquidity}, {volume})")
-                
-                for value in values:
+                for pool_address, data in metrics.items():
                     conn.execute(text(
                         f"""
-                        INSERT INTO uniswap_signals (timestamp, pool_address, price, liquidity, volume)
-                        VALUES {value}
+                        INSERT INTO pools (pool_address, liquidity_24h, volume_24h, price_range_24h)
+                        VALUES ('{pool_address}', {data['liquidity']}, {data['volume']}, '{data['price_low']}-{data['price_high']}')
+                        ON CONFLICT (pool_address) DO UPDATE
+                        SET price_range_24h = EXCLUDED.price_range_24h,
+                            liquidity_24h = EXCLUDED.liquidity_24h,
+                            volume_24h = EXCLUDED.volume_24h;
                         """
                     ))
                     conn.commit()
             except SQLAlchemyError as e:
                 print(f"An error occurred: {e}")
+    
