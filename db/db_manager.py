@@ -510,22 +510,3 @@ class DBManager:
             except SQLAlchemyError as e:
                 print(f"An error occurred: {e}")
     
-    def add_or_update_daily_metrics(self, metrics: dict) -> None:
-        """Add or update daily metrics."""
-        with self.engine.connect() as conn:
-            conn.execution_options(isolation_level="AUTOCOMMIT")
-            try:
-                for pool_address, data in metrics.items():
-                    conn.execute(text(
-                        f"""
-                        INSERT INTO pools (pool_address, liquidity_24h, volume_24h, price_range_24h)
-                        VALUES ('{pool_address}', {data['liquidity']}, {data['volume']}, '{data['price_low']}-{data['price_high']}')
-                        ON CONFLICT pool_address DO UPDATE
-                        SET price = EXCLUDED.price,
-                            liquidity = EXCLUDED.liquidity,
-                            volume = EXCLUDED.volume;
-                        """
-                    ))
-                    conn.commit()
-            except SQLAlchemyError as e:
-                print(f"An error occurred: {e}")
