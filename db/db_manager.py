@@ -35,6 +35,13 @@ class TokenTable(Base):
     name = Column(String, nullable=False)
     decimals = Column(Integer, nullable=False)
 
+class PoolTable(Base):
+    __tablename__ = 'pools'
+    pool_address = Column(String, primary_key=True)
+    liquidity_24h = Column(Numeric)
+    volume_24 = Column(Numeric)
+    price_range_24h = Column(String)
+
 class SwapEventTable(Base):
     __tablename__ = 'swap_event'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -119,6 +126,7 @@ class DBManager:
             Timetable,
             TokenPairTable,
             TokenTable,
+            PoolTable,
             SwapEventTable,
             MintEventTable,
             BurnEventTable,
@@ -465,6 +473,26 @@ class DBManager:
                         f"""
                         INSERT INTO uniswap_signals (timestamp, pool_address, price, liquidity, volume)
                         VALUES {value}
+                        """
+                    ))
+                    conn.commit()
+            except SQLAlchemyError as e:
+                print(f"An error occurred: {e}")
+    
+    def add_or_update_daily_metrics(self, metrics: dict) -> None:
+        """Add or update daily metrics."""
+        with self.engine.connect() as conn:
+            conn.execution_options(isolation_level="AUTOCOMMIT")
+            try:
+                for pool_address, data in metrics.items():
+                    conn.execute(text(
+                        f"""
+                        INSERT INTO pools (pool_address, liquidity_24h, volume_24h, price_range_24h)
+                        VALUES ('{pool_address}', {data['liquidity']}, {data['volume']}, '{data['price_low']}-{data['price_high']}')
+                        ON CONFLICT pool_address DO UPDATE
+                        SET price = EXCLUDED.price,
+                            liquidity = EXCLUDED.liquidity,
+                            volume = EXCLUDED.volume;
                         """
                     ))
                     conn.commit()
