@@ -39,7 +39,7 @@ class PoolTable(Base):
     __tablename__ = 'pools'
     pool_address = Column(String, primary_key=True)
     liquidity_24h = Column(Numeric)
-    volume_24 = Column(Numeric)
+    volume_24h = Column(Numeric)
     price_range_24h = Column(String)
 
 class SwapEventTable(Base):
@@ -489,10 +489,10 @@ class DBManager:
                         f"""
                         INSERT INTO pools (pool_address, liquidity_24h, volume_24h, price_range_24h)
                         VALUES ('{pool_address}', {data['liquidity']}, {data['volume']}, '{data['price_low']}-{data['price_high']}')
-                        ON CONFLICT pool_address DO UPDATE
-                        SET price = EXCLUDED.price,
-                            liquidity = EXCLUDED.liquidity,
-                            volume = EXCLUDED.volume;
+                        ON CONFLICT (pool_address) DO UPDATE
+                        SET price_range_24h = EXCLUDED.price_range_24h,
+                            liquidity_24h = EXCLUDED.liquidity_24h,
+                            volume_24h = EXCLUDED.volume_24h;
                         """
                     ))
                     conn.commit()
