@@ -129,8 +129,7 @@ class PoolDataFetcher:
                 aggregated_data[key]["sqrt_price_x96"] = []
                 aggregated_data[key]["type"] = None
         for event in data:
-            # print(f"timestamp: {event.get('timestamp')}")
-            round_timestamp = event.get("timestamp") // interval * interval
+            round_timestamp = event.get("timestamp") // interval * interval + interval
             key = (event.get("pool_address"), round_timestamp)
             if not key in aggregated_data:
                 raise Exception(f"Key {key} not found in aggregated_data")
