@@ -158,7 +158,6 @@ class PoolDataFetcher:
             
             if pool_address not in daily_metrics:
                 daily_metrics[pool_address] = {
-                    "timestamp": timestamp,
                     "volume": volume,
                     "liquidity": liquidity,
                     "price_high": price,
@@ -177,6 +176,7 @@ class PoolDataFetcher:
                 "liquidity": liquidity,
                 "price": price,
             })
+        self.db_manager.add_or_update_daily_metrics(daily_metrics)
         self.db_manager.add_uniswap_signals(metrics)
 
     # Define a function to calculate metrics per interval
