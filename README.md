@@ -39,6 +39,8 @@ Please note that this process may take a significant amount of time to fetch all
 
 If you have an alternative Ethereum node that you’d like to use, you can specify it in your `.env` file.
 
+---
+
 ### Running PostgreSQL
 
 Run PostgreSQL timescale db with docker compose
@@ -48,6 +50,8 @@ docker compose up -d timescaledb
 ```
 
 If you are already running postgres server, you can specify it in your `.env` file.
+
+---
 
 ### Running Fetcher
 
@@ -81,7 +85,7 @@ If you are already running postgres server, you can specify it in your `.env` fi
 
 1. **Run the application**:  
    ```bash  
-   python main.py  
+   pm2 start --name velora-pool-data-fetcher python main.py  
    ```  
 
 2. **Access the PostgreSQL database**:  
