@@ -8,7 +8,7 @@ The **Velora Pool Data Fetcher** is a Python-based application designed to retri
 
 ## 🌟 Features  
 
-- **Efficient Batch Processing**: Processes data in batches of 80 tokens to ensure optimal performance.  
+- **Efficient Batch Processing**: Processes data in batches of tokens to ensure optimal performance.  
 - **Comprehensive Uniswap Data Retrieval**: Supports fetching data for events like swaps, mints, burns, and collects.  
 - **Database Integration**: Leverages PostgreSQL with TimescaleDB for scalable and efficient storage.  
 - **Signal Generation**: Automatically generates and stores signals based on the fetched data.  
