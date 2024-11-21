@@ -117,6 +117,7 @@ class PoolDataFetcher:
         data = pool_data.get("data", None)
         if not data:
             return None
+        daily_metrics = {}
         aggregated_data = defaultdict(lambda: defaultdict(list))
         datetime_series = pd.date_range(start=datetime.fromtimestamp(start + interval, tz=timezone.utc), end=datetime.fromtimestamp(end, tz=timezone.utc), freq=f'{interval}s')
         for pool_address in prob_pool_addresses:
@@ -130,7 +131,18 @@ class PoolDataFetcher:
                 aggregated_data[key]["type"] = None
         for event in data:
             round_timestamp = event.get("timestamp") // interval * interval + interval
-            key = (event.get("pool_address"), round_timestamp)
+            pool_address = event.get("pool_address")
+            if pool_address not in daily_metrics:
+                daily_metrics[pool_address] = {
+                    "events_count": 1,
+                    "volume": 0.0,
+                    "liquidity": 0.0,
+                    "price_high": 0.0,
+                    "price_low": 0.0,
+                }
+            else:
+                daily_metrics[pool_address]["events_count"] += 1
+            key = (pool_address, round_timestamp)
             if not key in aggregated_data:
                 raise Exception(f"Key {key} not found in aggregated_data")
             if event.get("event").get("type") == "swap":
@@ -146,7 +158,7 @@ class PoolDataFetcher:
         calc_price = lambda x: [float((hex_to_signed_int(i)) / (2**96)) ** 2 for i in x]
         
         metrics = []
-        daily_metrics = {}
+        
         for key, value in aggregated_data.items():
             pool_address, timestamp = key
             volume = sum(apply_abs(value["amount0"])) + sum(value["amount1"])

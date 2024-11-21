@@ -480,7 +480,7 @@ class DBManager:
                     conn.execute(text(
                         f"""
                         INSERT INTO pools (pool_address, liquidity_24h, volume_24h, price_range_24h, events_count_24h)
-                        VALUES ('{pool_address}', {data['liquidity']}, {data['volume']}, '{data['price_low']}-{data['price_high']}', {data['events_count_24h']})
+                        VALUES ('{pool_address}', {data['liquidity']}, {data['volume']}, '{data['price_low']}-{data['price_high']}', {data['events_count']})
                         ON CONFLICT (pool_address) DO UPDATE
                         SET price_range_24h = EXCLUDED.price_range_24h,
                             liquidity_24h = EXCLUDED.liquidity_24h,
