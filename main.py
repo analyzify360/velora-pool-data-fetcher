@@ -68,8 +68,8 @@ class PoolDataFetcher:
         miner_data = answer.get("data", None)
         metrics, daily_metrics = signals
         print(f'saving pool data to database ...')
-        
-        self.db_manager.add_pool_data(miner_data)
+        self.db_manager.add_or_update_daily_metrics(daily_metrics)
+        self.db_manager.add_pool_and_signals_data(miner_data, metrics)
         self.db_manager.mark_token_pairs_as_complete(token_pairs)
         print(f'pool data saved successfully.')
 
