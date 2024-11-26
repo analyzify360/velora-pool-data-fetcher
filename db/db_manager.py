@@ -22,6 +22,7 @@ class TokenPairTable(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     token0 = Column(String, nullable=False)
     token1 = Column(String, nullable=False)
+    is_stablecoin = Column(Boolean, nullable=False)
     fee = Column(Integer, nullable=False)
     pool = Column(String, nullable=False)
     block_number = Column(Integer, nullable=False)
@@ -104,6 +105,18 @@ class UniswapSignalsTable(Base):
     price = Column(Float)
     liquidity = Column(Numeric)
     volume = Column(Numeric)
+
+class TokenMetricsTable(Base):
+    __tablename__ = 'token_metrics'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token_address = Column(String, nullable=False)
+    timestamp = Column(Integer, nullable=False)
+    open_price = Column(Float)
+    close_price = Column(Float)
+    high_price = Column(Float)
+    low_price = Column(Float)
+    total_volume = Column(Numeric)
+    total_liquidity = Column(Numeric)
 
 class DBManager:
 
@@ -399,7 +412,9 @@ class DBManager:
     def fetch_incompleted_token_pairs(self) -> List[Dict[str, Union[str, Integer, bool]]]:
         """Fetch all incompleted token pairs from the corresponding table."""
         with self.Session() as session:
-            incompleted_token_pairs = session.query(TokenPairTable).filter_by(completed=False).all()
+            incompleted_token_pairs = session.query(TokenPairTable).filter_by(completed=False, is_stablecoin=True).all()
+            if not incompleted_token_pairs:
+                incompleted_token_pairs = session.query(TokenPairTable).filter_by(completed=False, is_stablecoin=False).all()
             return [{"token0": row.token0, "token1": row.token1, "fee": row.fee, "pool_address": row.pool, "completed": row.completed} for row in incompleted_token_pairs]
 
     def mark_token_pairs_as_complete(self, token_pairs: List[tuple]) -> bool:

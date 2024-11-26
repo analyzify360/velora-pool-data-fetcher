@@ -161,7 +161,7 @@ class PoolDataFetcher:
         
         for key, value in aggregated_data.items():
             pool_address, timestamp = key
-            volume = sum(apply_abs(value["amount0"])) + sum(value["amount1"])
+            volume = sum(apply_abs(value["amount0"])) + sum(apply_abs(value["amount1"]))
             liquidity = sum(value["amount"])
             if len(value["sqrt_price_x96"]) == 0.0:
                 price = 0.0
