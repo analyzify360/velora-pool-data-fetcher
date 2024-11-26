@@ -385,11 +385,13 @@ class DBManager:
 
     def add_token_pairs(self, token_pairs: List[Dict[str, Union[str, Integer]]]) -> None:
         """Add token pairs to the corresponding table."""
-        
+        stablecoins = ['USDC', 'USDT', 'DAI', 'BUSD', 'FRAX']
+        isstablecoin = lambda x: True if x["token0"]["symbol"] in stablecoins else True if x["token1"]["symbol"] in stablecoins else False
         insert_values = [
             TokenPairTable(
                 token0 = token_pair['token0']["address"],
                 token1 = token_pair['token1']["address"],
+                is_stablecoin = isstablecoin(token_pair),
                 fee = token_pair['fee'],
                 pool = token_pair['pool_address'],
                 block_number = token_pair['block_number'],
