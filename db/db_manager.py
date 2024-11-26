@@ -108,9 +108,9 @@ class PoolMetricTable(Base):
 
 class TokenMetricTable(Base):
     __tablename__ = 'token_metrics'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    token_address = Column(String, nullable=False)
-    timestamp = Column(Integer, nullable=False)
+    timestamp = Column(Integer, nullable=False, primary_key=True)
+    token_address = Column(String, nullable=False, primary_key=True)
+    
     open_price = Column(Float)
     close_price = Column(Float)
     high_price = Column(Float)
@@ -231,6 +231,19 @@ class DBManager:
                     """
                 ))
                 print("Hypertable 'pool_metrics' created successfully.")
+                conn.execute(text(
+                    f"""
+                    SELECT create_hypertable(
+                        'token_metrics',
+                        'token_address',
+                        'timestamp',
+                        if_not_exists => TRUE, 
+                        migrate_data => true, 
+                        chunk_time_interval => 86400,
+                        number_partitions => 6000
+                    );
+                    """
+                ))
                 conn.execute(text(
                     f"""
                     CREATE OR REPLACE FUNCTION fill_missing_values()
