@@ -11,3 +11,7 @@ def hex_to_signed_int(hex_str):
         value -= 2**bit_length
     
     return value
+
+def tick_to_sqrt_price(tick):
+    """Convert a tick to the square root price"""
+    return 1.0001 ** (tick / 2)
