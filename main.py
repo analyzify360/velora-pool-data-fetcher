@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 import time
 import pandas as pd
-from utils.utils import hex_to_signed_int
+from utils.utils import hex_to_signed_int, tick_to_sqrt_price
 
 TIME_INTERVAL = 10 * 60
 START_TIMESTAMP = int(datetime(2021, 5, 4).replace(tzinfo=timezone.utc).timestamp())
@@ -115,8 +115,6 @@ class PoolDataFetcher:
             interval: The interval for aggregation.
         """
         data = pool_data.get("data", None)
-        if not data:
-            return None
         daily_metrics = {}
         aggregated_data = defaultdict(lambda: defaultdict(list))
         datetime_series = pd.date_range(start=datetime.fromtimestamp(start + interval, tz=timezone.utc), end=datetime.fromtimestamp(end, tz=timezone.utc), freq=f'{interval}s')
@@ -124,7 +122,9 @@ class PoolDataFetcher:
             for date_time in datetime_series:
                 timestamp = int(date_time.timestamp())
                 key = (pool_address, timestamp)
-                aggregated_data[key]["amount"] = []
+                aggregated_data[key]["total_liquidity"] = []
+                aggregated_data[key]["token0_liquidity"] = []
+                aggregated_data[key]["token1_liquidity"] = []
                 aggregated_data[key]["amount0"] = []
                 aggregated_data[key]["amount1"] = []
                 aggregated_data[key]["sqrt_price_x96"] = []
@@ -148,7 +148,16 @@ class PoolDataFetcher:
             if event.get("event").get("type") == "swap":
                 aggregated_data[key]["sqrt_price_x96"].append(event.get("event").get("data").get("sqrt_price_x96"))
             else:
-                aggregated_data[key]["amount"].append(hex_to_signed_int(event.get("event").get("data").get("amount", "0x0")))
+                amount = hex_to_signed_int(event.get("event").get("data").get("amount", "0x0"))
+                tick_lower = event.get("event").get("data").get("tick_lower")
+                tick_upper = event.get("event").get("data").get("tick_upper")
+                sqrt_price_lower = tick_to_sqrt_price(tick_lower)
+                sqrt_price_upper = tick_to_sqrt_price(tick_upper)
+                liquidity_token0 = amount * (sqrt_price_upper - sqrt_price_lower) / (sqrt_price_upper * sqrt_price_lower)
+                liquidity_token1 = amount * (sqrt_price_upper - sqrt_price_lower) / sqrt_price_upper
+                aggregated_data[key]["token0_liquidity"].append(liquidity_token0)
+                aggregated_data[key]["token1_liquidity"].append(liquidity_token1)
+                aggregated_data[key]["total_liquidity"].append(amount)
             aggregated_data[key]["amount0"].append(hex_to_signed_int(event.get("event").get("data").get("amount0")))
             aggregated_data[key]["amount1"].append(hex_to_signed_int(event.get("event").get("data").get("amount1")))
             aggregated_data[key]["type"] = event.get("event").get("type")
@@ -161,11 +170,18 @@ class PoolDataFetcher:
         
         for key, value in aggregated_data.items():
             pool_address, timestamp = key
+            token0_volume = sum(apply_abs(value["amount0"]))
+            token1_volume = sum(apply_abs(value["amount1"]))
             volume = sum(apply_abs(value["amount0"])) + sum(apply_abs(value["amount1"]))
+            
             liquidity = sum(value["amount"])
             if len(value["sqrt_price_x96"]) == 0.0:
                 price = 0.0
             else:
+                prices = calc_price(value["sqrt_price_x96"])
+                price_high = max(prices)
+                price_low = min(prices)
+                price_close = prices[-1]
                 price = sum(calc_price(value["sqrt_price_x96"])) / len(value["sqrt_price_x96"])
             
             if pool_address not in daily_metrics:
