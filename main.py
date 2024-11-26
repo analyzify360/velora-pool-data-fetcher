@@ -174,7 +174,7 @@ class PoolDataFetcher:
             token1_volume = sum(apply_abs(value["amount1"]))
             volume = sum(apply_abs(value["amount0"])) + sum(apply_abs(value["amount1"]))
             
-            liquidity = sum(value["amount"])
+            liquidity = sum(value["total_liquidity"])
             if len(value["sqrt_price_x96"]) == 0.0:
                 price = 0.0
             else:
@@ -182,7 +182,7 @@ class PoolDataFetcher:
                 price_high = max(prices)
                 price_low = min(prices)
                 price_close = prices[-1]
-                price = sum(calc_price(value["sqrt_price_x96"])) / len(value["sqrt_price_x96"])
+                price_ratio = sum(calc_price(value["sqrt_price_x96"])) / len(value["sqrt_price_x96"])
             
             if pool_address not in daily_metrics:
                 daily_metrics[pool_address] = {

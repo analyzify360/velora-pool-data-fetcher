@@ -499,6 +499,20 @@ class DBManager:
             except SQLAlchemyError as e:
                 session.rollback()
                 print(f"An error occurred: {e}")
+    def add_token_metrics(self, metrics: List[Dict]) -> None:
+        """Add or update token metrics."""
+        with self.Session() as session:
+            try:
+                token_metrics_entries = [
+                    TokenMetricTable(timestamp=metric['timestamp'], token_address=metric['token_address'], open_price=metric['open_price'], close_price=metric['close_price'], high_price=metric['high_price'], low_price=metric['low_price'], total_volume=metric['total_volume'], total_liquidity=metric['total_liquidity'])
+                    for metric in metrics
+                ]
+                if token_metrics_entries:
+                    session.add_all(token_metrics_entries)
+                    session.commit()
+            except SQLAlchemyError as e:
+                session.rollback()
+                print(f"An error occurred: {e}")
     
     def add_or_update_daily_metrics(self, metrics: dict) -> None:
         """Add or update daily metrics."""
