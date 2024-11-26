@@ -98,15 +98,15 @@ class CollectEventTable(Base):
     amount0 = Column(String, nullable=False)  # U256 can be stored as String
     amount1 = Column(String, nullable=False)  # U256 can be stored as String
 
-class UniswapSignalsTable(Base):
-    __tablename__ = 'uniswap_signals'
+class PoolMetricTable(Base):
+    __tablename__ = 'pool_metrics'
     timestamp = Column(Integer, nullable=False, primary_key=True)
     pool_address = Column(String, nullable=False, primary_key=True)
     price = Column(Float)
     liquidity = Column(Numeric)
     volume = Column(Numeric)
 
-class TokenMetricsTable(Base):
+class TokenMetricTable(Base):
     __tablename__ = 'token_metrics'
     id = Column(Integer, primary_key=True, autoincrement=True)
     token_address = Column(String, nullable=False)
@@ -220,7 +220,7 @@ class DBManager:
                 conn.execute(text(
                     f"""
                     SELECT create_hypertable(
-                        'uniswap_signals',
+                        'pool_metrics',
                         'timestamp',
                         'pool_address',
                         if_not_exists => TRUE, 
@@ -230,7 +230,7 @@ class DBManager:
                     );
                     """
                 ))
-                print("Hypertable 'uniswap_signals' created successfully.")
+                print("Hypertable 'pool_metrics' created successfully.")
                 conn.execute(text(
                     f"""
                     CREATE OR REPLACE FUNCTION fill_missing_values()
@@ -244,7 +244,7 @@ class DBManager:
                         IF NEW.price = 0.0 THEN
                             SELECT price
                             INTO last_price
-                            FROM uniswap_signals
+                            FROM pool_metrics
                             WHERE pool_address = NEW.pool_address
                             AND price != 0.0
                             ORDER BY timestamp DESC
@@ -260,7 +260,7 @@ class DBManager:
                         IF NEW.liquidity = 0 THEN
                             SELECT liquidity
                             INTO last_liquidity
-                            FROM uniswap_signals
+                            FROM pool_metrics
                             WHERE pool_address = NEW.pool_address
                             AND liquidity != 0
                             ORDER BY timestamp DESC
@@ -276,7 +276,7 @@ class DBManager:
                         IF NEW.volume = 0 THEN
                             SELECT volume
                             INTO last_volume
-                            FROM uniswap_signals
+                            FROM pool_metrics
                             WHERE pool_address = NEW.pool_address
                             AND volume != 0
                             ORDER BY timestamp DESC
@@ -305,11 +305,11 @@ class DBManager:
                             SELECT 1 
                             FROM pg_trigger 
                             WHERE tgname = 'fill_missing_values_trigger'
-                            AND tgrelid = 'uniswap_signals'::regclass
+                            AND tgrelid = 'pool_metrics'::regclass
                         ) THEN
                             -- Only create the trigger if it doesn't exist
                             CREATE TRIGGER fill_missing_values_trigger
-                            BEFORE INSERT ON uniswap_signals
+                            BEFORE INSERT ON pool_metrics
                             FOR EACH ROW
                             EXECUTE FUNCTION fill_missing_values();
                         END IF;
@@ -398,7 +398,6 @@ class DBManager:
                 completed = False)
             for token_pair in token_pairs
         ]
-        
         self.add_tokens([token for token_pair in token_pairs for token in [token_pair['token0'], token_pair['token1']]])
         
         with self.Session() as session:
@@ -436,7 +435,7 @@ class DBManager:
             session.query(TokenPairTable).update({TokenPairTable.completed: False})
             session.commit()
 
-    def add_pool_and_signals_data(self, pool_data: List[Dict], signals: List[Dict]) -> None:
+    def add_pool_event_and_metrics_data(self, pool_data: List[Dict], pool_metrics: List[Dict]) -> None:
         """Add pool data to the pool data table and related event tables, and then add Uniswap signals."""
 
         with self.Session() as session:
@@ -474,12 +473,12 @@ class DBManager:
                     session.add_all(collect_event_data)
 
                 # Add Uniswap signals
-                signals_data = [
-                    UniswapSignalsTable(timestamp=signal['timestamp'], pool_address=signal['pool_address'], price=signal['price'], liquidity=signal['liquidity'], volume=signal['volume'])
-                    for signal in signals
+                pool_metrics_entries = [
+                    PoolMetricTable(timestamp=metric['timestamp'], pool_address=metric['pool_address'], price=metric['price'], liquidity=metric['liquidity'], volume=metric['volume'])
+                    for metric in pool_metrics
                 ]
-                if signals_data:
-                    session.add_all(signals_data)
+                if pool_metrics_entries:
+                    session.add_all(pool_metrics_entries)
 
                 # Commit the transaction if all operations succeed
                 session.commit()
