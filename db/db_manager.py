@@ -415,7 +415,7 @@ class DBManager:
             incompleted_token_pairs = session.query(TokenPairTable).filter_by(completed=False, is_stablecoin=True).all()
             if not incompleted_token_pairs:
                 incompleted_token_pairs = session.query(TokenPairTable).filter_by(completed=False, is_stablecoin=False).all()
-            return [{"token0": row.token0, "token1": row.token1, "fee": row.fee, "pool_address": row.pool, "completed": row.completed} for row in incompleted_token_pairs]
+            return [{"token0": row.token0, "token1": row.token1, "fee": row.fee, "pool_address": row.pool, "is_stablecoin": row.is_stablecoin, "completed": row.completed} for row in incompleted_token_pairs]
 
     def mark_token_pairs_as_complete(self, token_pairs: List[tuple]) -> bool:
         """Mark a token pair as complete."""
