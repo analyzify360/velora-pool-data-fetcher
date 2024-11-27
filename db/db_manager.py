@@ -428,8 +428,8 @@ class DBManager:
         with self.Session() as session:
             incompleted_token_pairs = session.query(
                 TokenPairTable,
-                TokenTable.symbol.label('token0_symbol'),
-                TokenTable.symbol.label('token1_symbol')
+                TokenTable.decimals.label('token0_decimals'),
+                TokenTable.decimals.label('token1_decimals')
             ).join(
                 TokenTable, TokenPairTable.token0 == TokenTable.address or TokenPairTable.token1 == TokenTable.address
             ).filter_by(
@@ -439,8 +439,8 @@ class DBManager:
             if not incompleted_token_pairs:
                 incompleted_token_pairs = session.query(
                     TokenPairTable,
-                    TokenTable.symbol.label('token0_symbol'),
-                    TokenTable.symbol.label('token1_symbol')
+                    TokenTable.decimals.label('token0_decimals'),
+                    TokenTable.decimals.label('token1_decimals')
                 ).join(
                     TokenTable, TokenPairTable.token0 == TokenTable.address or TokenPairTable.token1 == TokenTable.address
                 ).filter_by(
@@ -455,8 +455,8 @@ class DBManager:
                     "pool_address": row.TokenPairTable.pool,
                     "is_stablecoin": row.TokenPairTable.is_stablecoin,
                     "completed": row.TokenPairTable.completed,
-                    "token0_symbol": row.token0_symbol,
-                    "token1_symbol": row.token1_symbol
+                    "token0_decimals": row.token0_decimals,
+                    "token1_decimals": row.token1_decimals
                 }
                 for row in incompleted_token_pairs
             ]
