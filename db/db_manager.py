@@ -235,8 +235,8 @@ class DBManager:
                     f"""
                     SELECT create_hypertable(
                         'token_metrics',
-                        'token_address',
                         'timestamp',
+                        'token_address',
                         if_not_exists => TRUE, 
                         migrate_data => true, 
                         chunk_time_interval => 86400,
@@ -426,10 +426,40 @@ class DBManager:
     def fetch_incompleted_token_pairs(self) -> List[Dict[str, Union[str, Integer, bool]]]:
         """Fetch all incompleted token pairs from the corresponding table."""
         with self.Session() as session:
-            incompleted_token_pairs = session.query(TokenPairTable).filter_by(completed=False, is_stablecoin=True).all()
+            incompleted_token_pairs = session.query(
+                TokenPairTable,
+                TokenTable.symbol.label('token0_symbol'),
+                TokenTable.symbol.label('token1_symbol')
+            ).join(
+                TokenTable, TokenPairTable.token0 == TokenTable.address or TokenPairTable.token1 == TokenTable.address
+            ).filter_by(
+                TokenPairTable.completed == False, TokenPairTable.is_stablecoin==True
+            ).all()
+            
             if not incompleted_token_pairs:
-                incompleted_token_pairs = session.query(TokenPairTable).filter_by(completed=False, is_stablecoin=False).all()
-            return [{"token0": row.token0, "token1": row.token1, "fee": row.fee, "pool_address": row.pool, "is_stablecoin": row.is_stablecoin, "completed": row.completed} for row in incompleted_token_pairs]
+                incompleted_token_pairs = session.query(
+                    TokenPairTable,
+                    TokenTable.symbol.label('token0_symbol'),
+                    TokenTable.symbol.label('token1_symbol')
+                ).join(
+                    TokenTable, TokenPairTable.token0 == TokenTable.address or TokenPairTable.token1 == TokenTable.address
+                ).filter_by(
+                    TokenPairTable.completed==False, TokenPairTable.is_stablecoin==False
+                ).all()
+            
+            return [
+                {
+                    "token0": row.TokenPairTable.token0,
+                    "token1": row.TokenPairTable.token1,
+                    "fee": row.TokenPairTable.fee,
+                    "pool_address": row.TokenPairTable.pool,
+                    "is_stablecoin": row.TokenPairTable.is_stablecoin,
+                    "completed": row.TokenPairTable.completed,
+                    "token0_symbol": row.token0_symbol,
+                    "token1_symbol": row.token1_symbol
+                }
+                for row in incompleted_token_pairs
+            ]
 
     def mark_token_pairs_as_complete(self, token_pairs: List[tuple]) -> bool:
         """Mark a token pair as complete."""
@@ -485,7 +515,7 @@ class DBManager:
                 if collect_event_data:
                     session.add_all(collect_event_data)
 
-                # Add Uniswap signals
+                # Add Pool Metrics
                 pool_metrics_entries = [
                     PoolMetricTable(timestamp=metric['timestamp'], pool_address=metric['pool_address'], price=metric['price'], liquidity=metric['liquidity'], volume=metric['volume'])
                     for metric in pool_metrics
@@ -504,7 +534,7 @@ class DBManager:
         with self.Session() as session:
             try:
                 token_metrics_entries = [
-                    TokenMetricTable(timestamp=metric['timestamp'], token_address=metric['token_address'], open_price=metric['open_price'], close_price=metric['close_price'], high_price=metric['high_price'], low_price=metric['low_price'], total_volume=metric['total_volume'], total_liquidity=metric['total_liquidity'])
+                    TokenMetricTable(timestamp=metric['timestamp'], token_address=metric['token_address'], close_price=metric['close_price'], high_price=metric['high_price'], low_price=metric['low_price'], total_volume=metric['total_volume'], total_liquidity=metric['total_liquidity'])
                     for metric in metrics
                 ]
                 if token_metrics_entries:
@@ -523,7 +553,7 @@ class DBManager:
                     conn.execute(text(
                         f"""
                         INSERT INTO pools (pool_address, liquidity_24h, volume_24h, price_range_24h, events_count_24h)
-                        VALUES ('{pool_address}', {data['liquidity']}, {data['volume']}, '{data['price_low']}-{data['price_high']}', {data['events_count']})
+                        VALUES ('{pool_address}', {data['liquidity']}, {data['volume']}, '{data['low_price']}-{data['high_price']}', {data['events_count']})
                         ON CONFLICT (pool_address) DO UPDATE
                         SET price_range_24h = EXCLUDED.price_range_24h,
                             liquidity_24h = EXCLUDED.liquidity_24h,
@@ -534,4 +564,14 @@ class DBManager:
                     conn.commit()
             except SQLAlchemyError as e:
                 print(f"An error occurred: {e}")
+    
+    def fetch_token_metrics(self, token_address: str, start_timestamp: int, end_timestamp: int) -> List[Dict[str, Union[int, float, str]]]:
+        """Fetch token metrics from the corresponding table."""
+        with self.Session() as session:
+            token_metrics = session.query(TokenMetricTable).filter(
+                TokenMetricTable.token_address == token_address,
+                TokenMetricTable.timestamp >= start_timestamp,
+                TokenMetricTable.timestamp <= end_timestamp
+            ).all()
+            return [{ "token_address": row.token_address,"timestamp": row.timestamp, "close_price": row.close_price} for row in token_metrics]
     
