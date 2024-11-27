@@ -10,6 +10,16 @@ from utils.utils import hex_to_signed_int, tick_to_sqrt_price
 TIME_INTERVAL = 10 * 60
 START_TIMESTAMP = int(datetime(2021, 5, 4).replace(tzinfo=timezone.utc).timestamp())
 DAY_SECONDS = 86400
+STABLECOINS = [
+    "0x6b175474e89094c44da98b954eedeac495271d0f", # DAI
+    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", # USDC1
+    "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", # USDC2
+    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", # USDC3
+    "0xdAC17F958D2ee523a2206206994597C13D831ec7", # USDT1
+    "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", # USDT2
+    "0x6B175474E89094C44Da98b954EedeAC495271d0F", # DAI
+    
+]
 
 
 class PoolDataFetcher:
@@ -54,9 +64,9 @@ class PoolDataFetcher:
         if not token_pairs:
             self.db_manager.mark_time_range_as_complete(start, end)
             return None
-        return token_pairs[:10]
+        return token_pairs[:1]
     
-    def save_pool_and_signals_data(self, prob: dict, answer: dict, signals: tuple) -> None:
+    def save_pool_and_metrics_data(self, prob: dict, answer: dict, metrics: tuple) -> None:
         """
         Save the pool data to the database.
         
@@ -65,11 +75,12 @@ class PoolDataFetcher:
             answer: The fetched data from rpc node.
         """
         token_pairs = prob.get("token_pairs", None)        
-        miner_data = answer.get("data", None)
-        metrics, daily_metrics = signals
+        onchain_data = answer.get("data", None)
+        pool_metrics, token_metrics, daily_metrics = metrics
         print(f'saving pool data to database ...')
         self.db_manager.add_or_update_daily_metrics(daily_metrics)
-        self.db_manager.add_pool_and_signals_data(miner_data, metrics)
+        self.db_manager.add_pool_event_and_metrics_data(onchain_data, pool_metrics)
+        self.db_manager.add_token_metrics(token_metrics)
         self.db_manager.mark_token_pairs_as_complete(token_pairs)
         print(f'pool data saved successfully.')
 
@@ -86,11 +97,17 @@ class PoolDataFetcher:
         
         req_token_pairs = []
         req_pool_addresses = []
+        req_pools_map = {}
         for token_pair in token_pairs:
             req_token_pairs.append((token_pair['token0'], token_pair['token1'], token_pair['fee']))
             req_pool_addresses.append(token_pair['pool_address'])
+            req_pools_map[token_pair['pool_address']] = {
+                "token0": token_pair['token0'],
+                "token1": token_pair['token1'],
+                "is_stablecoin": token_pair["is_stablecoin"]
+            }
 
-        return {"token_pairs": req_token_pairs, "pool_addresses": req_pool_addresses, "start_datetime": int(time_range['start']), "end_datetime": int(time_range['end'])}
+        return {"token_pairs": req_token_pairs, "pool_addresses": req_pool_addresses, "pools_map": req_pools_map, "start_datetime": int(time_range['start']), "end_datetime": int(time_range['end'])}
 
     def process_time_range(self, time_range: dict):
         print(f'Processing time range between {time_range["start"]} and {time_range["end"]}')
@@ -100,20 +117,28 @@ class PoolDataFetcher:
         print(f'querying uniswap_fetcher with problem: {prob}')
         answer = self.uniswap_fetcher.fetch_pool_data(prob['token_pairs'], prob['start_datetime'], prob['end_datetime'])
         print(f'received answer')
-        signals = self.generate_signals(answer, prob['pool_addresses'], time_range['start'], time_range['end'])
+        
+        metrics = self.generate_metrics(answer, prob["pools_map"], prob['pool_addresses'], time_range['start'], time_range['end'])
         print(f'saving data...')
-        self.save_pool_and_signals_data(prob, answer, signals)
+        self.save_pool_and_metrics_data(prob, answer, metrics)
     
-    def generate_signals(self, pool_data: dict, prob_pool_addresses: list, start: int, end: int, interval: int = 300) -> tuple:
+    def generate_metrics(self, pool_data: dict, pools_map: dict[dict[str, str]], prob_pool_addresses: list, start: int, end: int, interval: int = 300) -> tuple:
         """
-        Generate signals from the pool data.
+        Generate metrics from the pool data.
 
         Args:
-            pool_data: The pool data to generate signals from.
+            pool_data: The pool data to generate metrics from on-chain pool data.
             start: The start datetime for aggregation.
             end: The end datetime for aggregation.
             interval: The interval for aggregation.
         """
+        derived_token_metrics = []
+        for pool_map in pools_map.values():
+            if pool_map.get("is_stablecoin") == False:
+                derived_token_metrics = self.db_manager.fetch_token_metrics(pool_map.get("token0"), start + interval, end)
+                print(derived_token_metrics)
+                raise Exception("stop")
+        # raise Exception("stop")
         data = pool_data.get("data", None)
         daily_metrics = {}
         aggregated_data = defaultdict(lambda: defaultdict(list))
@@ -129,6 +154,7 @@ class PoolDataFetcher:
                 aggregated_data[key]["amount1"] = []
                 aggregated_data[key]["sqrt_price_x96"] = []
                 aggregated_data[key]["type"] = None
+        # print(f'printing aggregated data: {aggregated_data}')
         for event in data:
             round_timestamp = event.get("timestamp") // interval * interval + interval
             pool_address = event.get("pool_address")
@@ -137,8 +163,8 @@ class PoolDataFetcher:
                     "events_count": 1,
                     "volume": 0.0,
                     "liquidity": 0.0,
-                    "price_high": 0.0,
-                    "price_low": 0.0,
+                    "high_price": 0.0,
+                    "low_price": 0.0,
                 }
             else:
                 daily_metrics[pool_address]["events_count"] += 1
@@ -164,49 +190,109 @@ class PoolDataFetcher:
             
         # print(f'printing aggregated data: {aggregated_data}')
         apply_abs = lambda x: [abs(i) for i in x]
-        calc_price = lambda x: [float((hex_to_signed_int(i)) / (2**96)) ** 2 for i in x]
+        calc_price_token0 = lambda x: [float((hex_to_signed_int(i)) / (2**96)) ** 2 for i in x]
+        calc_price_token1 = lambda x: [ float(1.0 / i) for i in x]
         
-        metrics = []
+        pool_metrics = []
+        token_metrics = []
         
         for key, value in aggregated_data.items():
             pool_address, timestamp = key
-            token0_volume = sum(apply_abs(value["amount0"]))
-            token1_volume = sum(apply_abs(value["amount1"]))
+            volume_token0 = sum(apply_abs(value["amount0"]))
+            volume_token1 = sum(apply_abs(value["amount1"]))
+            liquidity_token0 = sum(value["token0_liquidity"])
+            liquidity_token1 = sum(value["token1_liquidity"])
             volume = sum(apply_abs(value["amount0"])) + sum(apply_abs(value["amount1"]))
             
             liquidity = sum(value["total_liquidity"])
+            
+            token0_address = pools_map[pool_address].get("token0")
+            token1_address = pools_map[pool_address].get("token1")
+            prices_ratio_token0 = calc_price_token0(value["sqrt_price_x96"])
+            prices_ratio_token1 = calc_price_token1(prices_token0)
+            if token0_address in STABLECOINS or token1_address in STABLECOINS:
+                stable_token = token0_address if token0_address in STABLECOINS else token1_address
+                non_stable_token = token0_address if token0_address not in STABLECOINS else token1_address
+                stable_price = 1.0
+                if len(prices_ratio_token0) == 0:
+                    price_ratio_token0 = [0.0,]
+                    price_ratio_token1 = [0.0,]
+                close_non_stable_price = price_ratio_token0[-1] if token0_address in STABLECOINS else price_ratio_token1[-1]
+                high_non_stable_price = max(prices_ratio_token0) if token0_address in STABLECOINS else max(prices_ratio_token1)
+                low_non_stable_price = min(prices_ratio_token0) if token0_address in STABLECOINS else min(prices_ratio_token1)
+                if token0_address == stable_token:
+                    stable_token_volume = volume_token0
+                    stable_token_liquidity = liquidity_token0
+                    non_stable_token_volume = volume_token1
+                    non_stable_token_liquidity = liquidity_token1
+                else:
+                    stable_token_volume = volume_token1
+                    stable_token_liquidity = liquidity_token1
+                    non_stable_token_volume = volume_token0
+                    non_stable_token_liquidity = liquidity_token0
+                token_metrics.append({
+                    "token_address": stable_token,
+                    "timestamp": timestamp,
+                    "total_volume": stable_token_volume,
+                    "total_liquidity": stable_token_liquidity,
+                    "high_price": stable_price,
+                    "low_price": stable_price,
+                    "close_price": stable_price,
+                })
+                token_metrics.append({
+                    "token_address": non_stable_token,
+                    "timestamp": timestamp,
+                    "total_volume": non_stable_token_volume,
+                    "total_liquidity": non_stable_token_liquidity,
+                    "high_price": high_non_stable_price,
+                    "low_price": low_non_stable_price,
+                    "close_price": close_non_stable_price,
+                })
+            
             if len(value["sqrt_price_x96"]) == 0.0:
-                price = 0.0
+                price_ratio_token0 = 0.0
+                high_price_token0 = 0.0
+                low_price_token0 = 0.0
+                close_price_token0 = 0.0
+                price_ratio_token1 = 0.0
+                high_price_token1 = 0.0
+                low_price_token1 = 0.0
+                close_price_token1 = 0.0
             else:
-                prices = calc_price(value["sqrt_price_x96"])
-                price_high = max(prices)
-                price_low = min(prices)
-                price_close = prices[-1]
-                price_ratio = sum(calc_price(value["sqrt_price_x96"])) / len(value["sqrt_price_x96"])
+                prices_token0 = calc_price_token0(value["sqrt_price_x96"])
+                prices_token1 = calc_price_token1(prices_token0)
+                high_price_token0 = max(prices_token0)
+                low_price_token0 = min(prices_token0)
+                close_price_token0 = prices_token0[-1]
+                price_ratio_token0 = sum(prices_token0) / len(value["sqrt_price_x96"])
+                high_price_token1 = max(prices_token1)
+                low_price_token1 = min(prices_token1)
+                close_price_token1 = prices_token1[-1]
+                price_ratio_token1 = sum(prices_token1) / len(prices_token1)
             
             if pool_address not in daily_metrics:
                 daily_metrics[pool_address] = {
                     "events_count": 0,
                     "volume": volume,
                     "liquidity": liquidity,
-                    "price_high": price,
-                    "price_low": price,
+                    "high_price": price_ratio_token0,
+                    "low_price": price_ratio_token0,
                 }
             else:
                 daily_metrics[pool_address]["volume"] += volume
                 daily_metrics[pool_address]["liquidity"] += liquidity
-                daily_metrics[pool_address]["price_high"] = max(daily_metrics[pool_address]["price_high"], price)
-                daily_metrics[pool_address]["price_low"] = min(daily_metrics[pool_address]["price_low"], price)
+                daily_metrics[pool_address]["high_price"] = max(daily_metrics[pool_address]["high_price"], price_ratio_token0)
+                daily_metrics[pool_address]["low_price"] = min(daily_metrics[pool_address]["low_price"], price_ratio_token0)
             
-            metrics.append({
+            pool_metrics.append({
                 "pool_address": pool_address,
                 "timestamp": timestamp,
                 "volume": volume,
                 "liquidity": liquidity,
-                "price": price,
+                "price": price_ratio_token0,
             })
             
-        return metrics, daily_metrics
+        return pool_metrics, token_metrics, daily_metrics
         
     def run(self):
         while True:
