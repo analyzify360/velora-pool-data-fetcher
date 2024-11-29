@@ -115,8 +115,8 @@ class TokenMetricTable(Base):
     close_price = Column(Float)
     high_price = Column(Float)
     low_price = Column(Float)
-    total_volume = Column(Numeric)
-    total_liquidity = Column(Numeric)
+    total_volume = Column(Float)
+    total_liquidity = Column(Float)
 
 class DBManager:
 
@@ -432,8 +432,10 @@ class DBManager:
                 TokenTable.decimals.label('token1_decimals')
             ).join(
                 TokenTable, TokenPairTable.token0 == TokenTable.address or TokenPairTable.token1 == TokenTable.address
-            ).filter_by(
-                TokenPairTable.completed == False, TokenPairTable.is_stablecoin==True
+            ).filter(
+                TokenPairTable.completed == False
+            ).filter(
+                TokenPairTable.is_stablecoin == True
             ).all()
             
             if not incompleted_token_pairs:
@@ -443,8 +445,10 @@ class DBManager:
                     TokenTable.decimals.label('token1_decimals')
                 ).join(
                     TokenTable, TokenPairTable.token0 == TokenTable.address or TokenPairTable.token1 == TokenTable.address
-                ).filter_by(
-                    TokenPairTable.completed==False, TokenPairTable.is_stablecoin==False
+                ).filter(
+                    TokenPairTable.completed==False
+                ).filter(
+                    TokenPairTable.is_stablecoin==False
                 ).all()
             
             return [
@@ -540,6 +544,54 @@ class DBManager:
                 if token_metrics_entries:
                     session.add_all(token_metrics_entries)
                     session.commit()
+            except SQLAlchemyError as e:
+                session.rollback()
+                print(f"An error occurred: {e}")
+    def add_or_update_token_metrics(self, metrics: List[Dict]) -> None:
+        """Add or update token metrics based on the is_derived field."""
+        with self.Session() as session:
+            try:
+                for metric in metrics:
+                    existing_record = session.query(TokenMetricTable).filter_by(
+                        timestamp=metric['timestamp'],
+                        token_address=metric['token_address']
+                    ).first()
+
+                    if metric.get('is_derived', False):
+                        if not existing_record:
+                            new_metric = TokenMetricTable(
+                                timestamp=metric['timestamp'],
+                                token_address=metric['token_address'],
+                                close_price=metric['close_price'],
+                                high_price=metric['high_price'],
+                                low_price=metric['low_price'],
+                                total_volume=metric['total_volume'],
+                                total_liquidity=metric['total_liquidity']
+                            )
+                            session.add(new_metric)
+                        else:
+                            existing_record.close_price = existing_record.close_price + metric['close_price'] / 2
+                            existing_record.high_price = metric['high_price'] if metric['high_price'] > existing_record.high_price else existing_record.high_price
+                            existing_record.low_price = metric['low_price'] if metric['low_price'] < existing_record.low_price else existing_record.low_price
+                            existing_record.total_volume += metric['total_volume']
+                            existing_record.total_liquidity += metric['total_liquidity']
+                    else:
+                        if existing_record:
+                            existing_record.total_volume += metric['total_volume']
+                            existing_record.total_liquidity += metric['total_liquidity']
+                        else:
+                            new_metric = TokenMetricTable(
+                                timestamp=metric['timestamp'],
+                                token_address=metric['token_address'],
+                                close_price=metric['close_price'],
+                                high_price=metric['high_price'],
+                                low_price=metric['low_price'],
+                                total_volume=metric['total_volume'],
+                                total_liquidity=metric['total_liquidity']
+                            )
+                            session.add(new_metric)
+
+                session.commit()
             except SQLAlchemyError as e:
                 session.rollback()
                 print(f"An error occurred: {e}")
