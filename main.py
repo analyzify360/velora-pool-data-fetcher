@@ -6,19 +6,17 @@ from datetime import datetime, timezone
 import time
 import pandas as pd
 from typing import Dict, Union
-from utils.utils import hex_to_signed_int, tick_to_sqrt_price
+from utils.utils import hex_to_signed_int, tick_to_sqrt_price, calc_prices_token0_by_token1, calc_prices_token1_by_token0
 
 TIME_INTERVAL = 10 * 60
 START_TIMESTAMP = int(datetime(2021, 5, 4).replace(tzinfo=timezone.utc).timestamp())
 DAY_SECONDS = 86400
 STABLECOINS = [
-    "0x6b175474e89094c44da98b954eedeac495271d0f", # DAI
-    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", # USDC1
+    "0x6b175474e89094c44da98b954eedeac495271d0f", # DAI in Ethereum Mainnet
+    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", # USDC in Ethereum Mainnet
     "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", # USDC2
     "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", # USDC3
-    "0xdAC17F958D2ee523a2206206994597C13D831ec7", # USDT1
-    "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", # USDT2
-    "0x6B175474E89094C44Da98b954EedeAC495271d0F", # DAI
+    "0xdac17f958d2ee523a2206206994597c13d831ec7", # USDT in Ethereum Mainnet
     
 ]
 
@@ -195,10 +193,7 @@ class PoolDataFetcher:
             aggregated_data[key]["amount1"].append(hex_to_signed_int(event.get("event").get("data").get("amount1")))
             aggregated_data[key]["type"] = event.get("event").get("type")
             
-        # print(f'printing aggregated data: {aggregated_data}')
         apply_abs = lambda x: [abs(i) for i in x]
-        calc_price_token0 = lambda x: [float((hex_to_signed_int(i)) / (2**96)) ** 2  for i in x]
-        calc_price_token1 = lambda x: [ float(1.0 / i) for i in x]
         
         pool_metrics = []
         token_metrics = []
@@ -212,20 +207,22 @@ class PoolDataFetcher:
             
             token0_address = pools_map[pool_address].get("token0")
             token1_address = pools_map[pool_address].get("token1")
-            prices_ratio_token0 = calc_price_token0(value["sqrt_price_x96"])
-            prices_ratio_token1 = calc_price_token1(prices_ratio_token0)
+            prices_ratio_token0 = calc_prices_token0_by_token1(value["sqrt_price_x96"], pools_map[pool_address].get("token0_decimals"), pools_map[pool_address].get("token1_decimals"))
+            prices_ratio_token1 = calc_prices_token1_by_token0(value["sqrt_price_x96"], pools_map[pool_address].get("token0_decimals"), pools_map[pool_address].get("token1_decimals"))
             if token0_address in STABLECOINS or token1_address in STABLECOINS:
                 stable_token = token0_address if token0_address in STABLECOINS else token1_address
                 non_stable_token = token0_address if token0_address not in STABLECOINS else token1_address
+                
+                
                 stable_price = 1.0
                 if len(prices_ratio_token0) == 0:
                     prices_ratio_token0 = [0.0,]
                 if len(prices_ratio_token1) == 0:
                     prices_ratio_token1 = [0.0,]
-                close_non_stable_price = prices_ratio_token0[-1] if token0_address in STABLECOINS else prices_ratio_token1[-1]
-                high_non_stable_price = max(prices_ratio_token0) if token0_address in STABLECOINS else max(prices_ratio_token1)
-                low_non_stable_price = min(prices_ratio_token0) if token0_address in STABLECOINS else min(prices_ratio_token1)
-                average_non_stable_price = sum(prices_ratio_token0) / len(prices_ratio_token0) if token0_address in STABLECOINS else sum(prices_ratio_token1) / len(prices_ratio_token1)
+                close_non_stable_price = prices_ratio_token1[-1] if token0_address in STABLECOINS else prices_ratio_token0[-1]
+                high_non_stable_price = max(prices_ratio_token1) if token0_address in STABLECOINS else max(prices_ratio_token0)
+                low_non_stable_price = min(prices_ratio_token1) if token0_address in STABLECOINS else min(prices_ratio_token0)
+                average_non_stable_price = sum(prices_ratio_token1) / len(prices_ratio_token1) if token0_address in STABLECOINS else sum(prices_ratio_token0) / len(prices_ratio_token0)
                 if token0_address == stable_token:
                     stable_token_volume = volume_token0
                     stable_token_liquidity = liquidity_token0
@@ -271,7 +268,6 @@ class PoolDataFetcher:
             else:
                 price_token0 = derived_token_metrics.get(token0_address, {}).get(timestamp, None)
                 price_token1 = derived_token_metrics.get(token1_address, {}).get(timestamp, None)
-                
                 if not price_token0 or not price_token1:
                     continue
                 
@@ -294,7 +290,6 @@ class PoolDataFetcher:
                     low_price_token0 = price_token1 * min(prices_ratio_token0)
                     price_token0 = price_token1 * average_price_ratio_token0
                     is_token0_derived = False
-                
                 usd_volume_token0 = volume_token0 * price_token0
                 usd_volume_token1 = volume_token1 * price_token1
                 usd_liquidity_token0 = liquidity_token0 * price_token0
