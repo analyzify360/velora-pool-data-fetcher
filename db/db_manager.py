@@ -44,8 +44,10 @@ class PoolTable(Base):
     price_range_24h = Column(String)
     events_count_24h = Column(Integer)
     last_price = Column(Float)
-    last_liquidity = Column(Numeric)
-    last_volume = Column(Numeric)
+    last_liquidity_token0 = Column(Numeric)
+    last_liquidity_token1 = Column(Numeric)
+    last_volume_token0 = Column(Numeric)
+    last_volume_token1 = Column(Numeric)
 
 class SwapEventTable(Base):
     __tablename__ = 'swap_event'
@@ -613,15 +615,17 @@ class DBManager:
                 for pool_address, data in metrics.items():
                     conn.execute(text(
                         f"""
-                        INSERT INTO pools (pool_address, liquidity_24h, volume_24h, price_range_24h, events_count_24h, last_price, last_liquidity, last_volume)
-                        VALUES ('{pool_address}', {data['liquidity']}, {data['volume']}, '{data['low_price']}-{data['high_price']}', {data['events_count']}, {data['last_price']}, {data['last_liquidity']}, {data['last_volume']})
+                        INSERT INTO pools (pool_address, liquidity_24h, volume_24h, price_range_24h, events_count_24h, last_price, last_liquidity_token0, last_liquidity_token1, last_volume_token0, last_voluem_token1)
+                        VALUES ('{pool_address}', {data['liquidity_24h']}, {data['volume_24h']}, '{data['low_price']}-{data['high_price']}', {data['events_count']}, {data['last_price']}, {data['last_liquidity_token0']}, {data['last_liquidity_token1']}, {data['last_volume_token0']}, {data['last_volume_token1']})
                         ON CONFLICT (pool_address) DO UPDATE
                         SET price_range_24h = EXCLUDED.price_range_24h,
                             liquidity_24h = EXCLUDED.liquidity_24h,
                             volume_24h = EXCLUDED.volume_24h,
                             events_count_24h = EXCLUDED.events_count_24h,last_price = CASE WHEN EXCLUDED.last_price != 0.0 THEN EXCLUDED.last_price ELSE pools.last_price END,
-                            last_liquidity = pools.last_liquidity + EXCLUDED.last_liquidity,
-                            last_volume = pools.last_volume + EXCLUDED.last_volume;
+                            last_liquidity_token0 = pools.last_liquidity_token0 + EXCLUDED.last_liquidity_token0,
+                            last_liquidity_token1 = pools.last_liquidity_token1 + EXCLUDED.last_liquidity_token1,
+                            last_volume_token0 = pools.last_volume _token0+ EXCLUDED.last_volume_token0;
+                            last_volume_token1 = pools.last_volume_token1 + EXCLUDED.last_volume_token1;
                         """
                     ))
                     conn.commit()
