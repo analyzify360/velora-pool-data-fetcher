@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, Column, Boolean, MetaData, Table, String, Integer, Float, Numeric, inspect, insert, text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, aliased
 from sqlalchemy.exc import SQLAlchemyError, OperationalError, ProgrammingError
 from typing import Union, List, Dict
 from utils.config import get_postgres_url
@@ -426,12 +426,16 @@ class DBManager:
     def fetch_incompleted_token_pairs(self) -> List[Dict[str, Union[str, Integer, bool]]]:
         """Fetch all incompleted token pairs from the corresponding table."""
         with self.Session() as session:
+            Token0 = aliased(TokenTable)
+            Token1 = aliased(TokenTable)
             incompleted_token_pairs = session.query(
                 TokenPairTable,
-                TokenTable.decimals.label('token0_decimals'),
-                TokenTable.decimals.label('token1_decimals')
+                Token0.decimals.label('token0_decimals'),
+                Token1.decimals.label('token1_decimals')
             ).join(
-                TokenTable, TokenPairTable.token0 == TokenTable.address or TokenPairTable.token1 == TokenTable.address
+                Token0, TokenPairTable.token0 == Token0.address
+            ).join(
+                Token1, TokenPairTable.token1 == Token1.address
             ).filter(
                 TokenPairTable.completed == False
             ).filter(
@@ -441,14 +445,16 @@ class DBManager:
             if not incompleted_token_pairs:
                 incompleted_token_pairs = session.query(
                     TokenPairTable,
-                    TokenTable.decimals.label('token0_decimals'),
-                    TokenTable.decimals.label('token1_decimals')
+                    Token0.decimals.label('token0_decimals'),
+                    Token1.decimals.label('token1_decimals')
                 ).join(
-                    TokenTable, TokenPairTable.token0 == TokenTable.address or TokenPairTable.token1 == TokenTable.address
+                    Token0, TokenPairTable.token0 == Token0.address
+                ).join(
+                    Token1, TokenPairTable.token1 == Token1.address
                 ).filter(
-                    TokenPairTable.completed==False
+                    TokenPairTable.completed == False
                 ).filter(
-                    TokenPairTable.is_stablecoin==False
+                    TokenPairTable.is_stablecoin == False
                 ).all()
             
             return [
@@ -570,9 +576,9 @@ class DBManager:
                             )
                             session.add(new_metric)
                         else:
-                            existing_record.close_price = existing_record.close_price + metric['close_price'] / 2
-                            existing_record.high_price = metric['high_price'] if metric['high_price'] > existing_record.high_price else existing_record.high_price
-                            existing_record.low_price = metric['low_price'] if metric['low_price'] < existing_record.low_price else existing_record.low_price
+                            # existing_record.close_price = existing_record.close_price + metric['close_price'] / 2
+                            # existing_record.high_price = metric['high_price'] if metric['high_price'] > existing_record.high_price else existing_record.high_price
+                            # existing_record.low_price = metric['low_price'] if metric['low_price'] < existing_record.low_price else existing_record.low_price
                             existing_record.total_volume += metric['total_volume']
                             existing_record.total_liquidity += metric['total_liquidity']
                     else:
