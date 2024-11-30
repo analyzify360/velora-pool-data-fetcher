@@ -36,18 +36,14 @@ class TokenTable(Base):
     name = Column(String, nullable=False)
     decimals = Column(Integer, nullable=False)
 
-class PoolTable(Base):
-    __tablename__ = 'pools'
+class CurrentPoolMetricTable(Base):
+    __tablename__ = 'current_pool_metrics'
     pool_address = Column(String, primary_key=True)
-    liquidity_24h = Column(Numeric)
-    volume_24h = Column(Numeric)
-    price_range_24h = Column(String)
-    events_count_24h = Column(Integer)
-    last_price = Column(Float)
-    last_liquidity_token0 = Column(Numeric)
-    last_liquidity_token1 = Column(Numeric)
-    last_volume_token0 = Column(Numeric)
-    last_volume_token1 = Column(Numeric)
+    price = Column(Float)
+    liquidity_token0 = Column(Float)
+    liquidity_token1 = Column(Float)
+    volume_token0 = Column(Float)
+    volume_token1 = Column(Float)
 
 class SwapEventTable(Base):
     __tablename__ = 'swap_event'
@@ -108,8 +104,10 @@ class PoolMetricTable(Base):
     timestamp = Column(Integer, nullable=False, primary_key=True)
     pool_address = Column(String, nullable=False, primary_key=True)
     price = Column(Float)
-    liquidity = Column(Numeric)
-    volume = Column(Numeric)
+    liquidity_token0 = Column(Float)
+    liquidity_token1 = Column(Float)
+    volume_token0 = Column(Float)
+    volume_token1 = Column(Float)
 
 class TokenMetricTable(Base):
     __tablename__ = 'token_metrics'
@@ -249,91 +247,92 @@ class DBManager:
                     );
                     """
                 ))
-                conn.execute(text(
-                    f"""
-                    CREATE OR REPLACE FUNCTION fill_missing_values()
-                    RETURNS TRIGGER AS $$
-                    DECLARE
-                        last_price RECORD;
-                        last_liquidity RECORD;
-                        last_volume RECORD;
-                    BEGIN
-                        -- Check and retrieve the last known price for this pool_address if NEW.price is NULL
-                        IF NEW.price = 0.0 THEN
-                            SELECT price
-                            INTO last_price
-                            FROM pool_metrics
-                            WHERE pool_address = NEW.pool_address
-                            AND price != 0.0
-                            ORDER BY timestamp DESC
-                            LIMIT 1;
+                print("Hypertable 'token_metrics' created successfully.")
+                # conn.execute(text(
+                #     f"""
+                #     CREATE OR REPLACE FUNCTION fill_missing_values()
+                #     RETURNS TRIGGER AS $$
+                #     DECLARE
+                #         last_price RECORD;
+                #         last_liquidity RECORD;
+                #         last_volume RECORD;
+                #     BEGIN
+                #         -- Check and retrieve the last known price for this pool_address if NEW.price is NULL
+                #         IF NEW.price = 0.0 THEN
+                #             SELECT price
+                #             INTO last_price
+                #             FROM pool_metrics
+                #             WHERE pool_address = NEW.pool_address
+                #             AND price != 0.0
+                #             ORDER BY timestamp DESC
+                #             LIMIT 1;
 
-                            -- Substitute 0 price with the last known price, if available
-                            IF last_price.price != 0.0 THEN
-                                NEW.price := last_price.price;
-                            END IF;
-                        END IF;
+                #             -- Substitute 0 price with the last known price, if available
+                #             IF last_price.price != 0.0 THEN
+                #                 NEW.price := last_price.price;
+                #             END IF;
+                #         END IF;
 
-                        -- Check and retrieve the last known liquidity for this pool_address if NEW.liquidity is 0
-                        IF NEW.liquidity = 0 THEN
-                            SELECT liquidity
-                            INTO last_liquidity
-                            FROM pool_metrics
-                            WHERE pool_address = NEW.pool_address
-                            AND liquidity != 0
-                            ORDER BY timestamp DESC
-                            LIMIT 1;
+                #         -- Check and retrieve the last known liquidity for this pool_address if NEW.liquidity is 0
+                #         IF NEW.liquidity = 0 THEN
+                #             SELECT liquidity
+                #             INTO last_liquidity
+                #             FROM pool_metrics
+                #             WHERE pool_address = NEW.pool_address
+                #             AND liquidity != 0
+                #             ORDER BY timestamp DESC
+                #             LIMIT 1;
 
-                            -- Substitute 0 liquidity with the last known liquidity, if available
-                            IF last_liquidity.liquidity != 0 THEN
-                                NEW.liquidity := last_liquidity.liquidity;
-                            END IF;
-                        END IF;
+                #             -- Substitute 0 liquidity with the last known liquidity, if available
+                #             IF last_liquidity.liquidity != 0 THEN
+                #                 NEW.liquidity := last_liquidity.liquidity;
+                #             END IF;
+                #         END IF;
 
-                        -- Check and retrieve the last known volume for this pool_address if NEW.volume is 0
-                        IF NEW.volume = 0 THEN
-                            SELECT volume
-                            INTO last_volume
-                            FROM pool_metrics
-                            WHERE pool_address = NEW.pool_address
-                            AND volume != 0
-                            ORDER BY timestamp DESC
-                            LIMIT 1;
+                #         -- Check and retrieve the last known volume for this pool_address if NEW.volume is 0
+                #         IF NEW.volume = 0 THEN
+                #             SELECT volume
+                #             INTO last_volume
+                #             FROM pool_metrics
+                #             WHERE pool_address = NEW.pool_address
+                #             AND volume != 0
+                #             ORDER BY timestamp DESC
+                #             LIMIT 1;
 
-                            -- Substitute 0 volume with the last known volume, if available
-                            IF last_volume.volume != 0 THEN
-                                NEW.volume := last_volume.volume;
-                            END IF;
-                        END IF;
+                #             -- Substitute 0 volume with the last known volume, if available
+                #             IF last_volume.volume != 0 THEN
+                #                 NEW.volume := last_volume.volume;
+                #             END IF;
+                #         END IF;
 
-                        -- Return the potentially modified NEW record
-                        RETURN NEW;
-                    END;
-                    $$ LANGUAGE plpgsql;
+                #         -- Return the potentially modified NEW record
+                #         RETURN NEW;
+                #     END;
+                #     $$ LANGUAGE plpgsql;
 
-                    """
-                ))
-                print("Function 'fill_missing_values' created successfully.")
-                conn.execute(text(
-                    f"""
-                    DO $$
-                    BEGIN
-                        -- Check if the trigger already exists
-                        IF NOT EXISTS (
-                            SELECT 1 
-                            FROM pg_trigger 
-                            WHERE tgname = 'fill_missing_values_trigger'
-                            AND tgrelid = 'pool_metrics'::regclass
-                        ) THEN
-                            -- Only create the trigger if it doesn't exist
-                            CREATE TRIGGER fill_missing_values_trigger
-                            BEFORE INSERT ON pool_metrics
-                            FOR EACH ROW
-                            EXECUTE FUNCTION fill_missing_values();
-                        END IF;
-                    END $$;
-                    """
-                ))
+                #     """
+                # ))
+                # print("Function 'fill_missing_values' created successfully.")
+                # conn.execute(text(
+                #     f"""
+                #     DO $$
+                #     BEGIN
+                #         -- Check if the trigger already exists
+                #         IF NOT EXISTS (
+                #             SELECT 1 
+                #             FROM pg_trigger 
+                #             WHERE tgname = 'fill_missing_values_trigger'
+                #             AND tgrelid = 'pool_metrics'::regclass
+                #         ) THEN
+                #             -- Only create the trigger if it doesn't exist
+                #             CREATE TRIGGER fill_missing_values_trigger
+                #             BEFORE INSERT ON pool_metrics
+                #             FOR EACH ROW
+                #             EXECUTE FUNCTION fill_missing_values();
+                #         END IF;
+                #     END $$;
+                #     """
+                # ))
 
             except SQLAlchemyError as e:
                 print(f"An error occurred: {e}")
@@ -531,12 +530,36 @@ class DBManager:
                     session.add_all(collect_event_data)
 
                 # Add Pool Metrics
-                pool_metrics_entries = [
-                    PoolMetricTable(timestamp=metric['timestamp'], pool_address=metric['pool_address'], price=metric['price'], liquidity=metric['liquidity'], volume=metric['volume'])
-                    for metric in pool_metrics
-                ]
-                if pool_metrics_entries:
-                    session.add_all(pool_metrics_entries)
+                # last_metrics = session.query(DailyPoolMetricTable).filter(DailyPoolMetricTable.pool_address.in_([metric['pool_address'] for metric in pool_metrics])).all()
+                # last_metrics = {metric.pool_address: metric for metric in last_metrics} if last_metrics else {} # Convert to dict for easy access
+                batch_size = 10
+                for i in range(0, len(pool_metrics), batch_size):
+                    batch = pool_metrics[i:i + batch_size]
+                    for metric in batch:
+                        existing_record = session.query(PoolMetricTable).filter_by(
+                            timestamp=metric['timestamp'],
+                            pool_address=metric['pool_address']
+                        ).first()
+
+                        if existing_record:
+                            # Update existing record
+                            existing_record.price = metric['price'] if metric['price'] != 0.0 else existing_record.price
+                            existing_record.liquidity_token0 = existing_record.liquidity_token0 + metric['liquidity_token0'] if metric['liquidity_token0'] != 0.0 else existing_record.liquidity_token0
+                            existing_record.liquidity_token1 = existing_record.liquidity_token1 + metric['liquidity_token1'] if metric['liquidity_token1'] != 0.0 else existing_record.liquidity_token1
+                            existing_record.volume_token0 = existing_record.volume_token0 + metric['volume_token0'] if metric['volume_token0'] != 0.0 else existing_record.volume_token0
+                            existing_record.volume_token1 = existing_record.volume_token1 + metric['volume_token1'] if metric['volume_token1'] != 0.0 else existing_record.volume_token1
+                        else:
+                            # Insert new record
+                            new_metric = PoolMetricTable(
+                                timestamp=metric['timestamp'],
+                                pool_address=metric['pool_address'],
+                                price=metric['price'],
+                                liquidity_token0=metric['liquidity_token0'],
+                                liquidity_token1=metric['liquidity_token1'],
+                                volume_token0=metric['volume_token0'],
+                                volume_token1=metric['volume_token1']
+                            )
+                            session.add(new_metric)
 
                 # Commit the transaction if all operations succeed
                 session.commit()
@@ -607,7 +630,7 @@ class DBManager:
                 session.rollback()
                 print(f"An error occurred: {e}")
     
-    def add_or_update_daily_metrics(self, metrics: dict) -> None:
+    def add_or_update_current_pool_metrics(self, metrics: dict) -> None:
         """Add or update daily metrics."""
         with self.engine.connect() as conn:
             conn.execution_options(isolation_level="AUTOCOMMIT")
@@ -615,22 +638,34 @@ class DBManager:
                 for pool_address, data in metrics.items():
                     conn.execute(text(
                         f"""
-                        INSERT INTO pools (pool_address, liquidity_24h, volume_24h, price_range_24h, events_count_24h, last_price, last_liquidity_token0, last_liquidity_token1, last_volume_token0, last_voluem_token1)
-                        VALUES ('{pool_address}', {data['liquidity_24h']}, {data['volume_24h']}, '{data['low_price']}-{data['high_price']}', {data['events_count']}, {data['last_price']}, {data['last_liquidity_token0']}, {data['last_liquidity_token1']}, {data['last_volume_token0']}, {data['last_volume_token1']})
+                        INSERT INTO current_pool_metrics (pool_address, price, liquidity_token0, liquidity_token1, volume_token0, volume_token1)
+                        VALUES ('{pool_address}', {data['total_liquidity_token0'] + data['total_liquidity_token1']}, {data['total_volume_token0'] + data['total_volume_token1']}, {data['events_count']}, {data['price']}, {data['total_liquidity_token0']}, {data['total_liquidity_token1']}, {data['total_volume_token0']}, {data['total_volume_token1']})
                         ON CONFLICT (pool_address) DO UPDATE
-                        SET price_range_24h = EXCLUDED.price_range_24h,
-                            liquidity_24h = EXCLUDED.liquidity_24h,
-                            volume_24h = EXCLUDED.volume_24h,
-                            events_count_24h = EXCLUDED.events_count_24h,last_price = CASE WHEN EXCLUDED.last_price != 0.0 THEN EXCLUDED.last_price ELSE pools.last_price END,
-                            last_liquidity_token0 = pools.last_liquidity_token0 + EXCLUDED.last_liquidity_token0,
-                            last_liquidity_token1 = pools.last_liquidity_token1 + EXCLUDED.last_liquidity_token1,
-                            last_volume_token0 = pools.last_volume _token0+ EXCLUDED.last_volume_token0;
-                            last_volume_token1 = pools.last_volume_token1 + EXCLUDED.last_volume_token1;
+                        SET price = CASE WHEN EXCLUDED.price != 0.0 THEN EXCLUDED.price ELSE current_pool_metrics.price END,
+                            liquidity_token0 = current_pool_metrics.liquidity_token0 + EXCLUDED.liquidity_token0,
+                            liquidity_token1 = current_pool_metrics.liquidity_token1 + EXCLUDED.liquidity_token1,
+                            volume_token0 = current_pool_metrics.volume_token0+ EXCLUDED.volume_token0,
+                            volume_token1 = current_pool_metrics.volume_token1 + EXCLUDED.volume_token1;
                         """
                     ))
                     conn.commit()
             except SQLAlchemyError as e:
                 print(f"An error occurred: {e}")
+    
+    def fetch_current_pool_metrics(self, pool_address: str) -> Dict[str, Union[int, float]]:
+        """Fetch the latest pool metrics."""
+        with self.Session() as session:
+            metrics = session.query(CurrentPoolMetricTable).filter_by(pool_address=pool_address).first()
+            if metrics:
+                return {
+                    "price": metrics.price,
+                    "liquidity_token0": metrics.liquidity_token0,
+                    "liquidity_token1": metrics.liquidity_token1,
+                    "volume_token0": metrics.volume_token0,
+                    "volume_token1": metrics.volume_token1
+                }
+            else:
+                return None
     
     def fetch_token_metrics(self, token_address: str, start_timestamp: int, end_timestamp: int) -> List[Dict[str, Union[int, float, str]]]:
         """Fetch token metrics from the corresponding table."""
