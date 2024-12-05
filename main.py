@@ -560,8 +560,6 @@ class PoolDataFetcher:
                             ).get("total_liquidity_token1", 0.0),
                         }
                     )
-                # print(f"daily_pool_metrics: {daily_pool_metrics}")
-                # raise Exception("stop")
             else:
                 price_token0 = derived_token_metrics.get(token0_address, {}).get(
                     timestamp, None
@@ -742,8 +740,6 @@ class PoolDataFetcher:
                         ).get("total_liquidity_token1", 0.0),
                     }
                 )
-                # print(f"daily_pool_metrics: {daily_pool_metrics}")
-                # raise Exception("stop")
 
         return pool_metrics, token_metrics, daily_pool_metrics, current_token_metrics
 
