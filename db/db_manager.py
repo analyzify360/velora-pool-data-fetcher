@@ -43,7 +43,8 @@ class TokenPairTable(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     token0 = Column(String, nullable=False)
     token1 = Column(String, nullable=False)
-    is_stablecoin = Column(Boolean, nullable=False)
+    has_stablecoin = Column(Boolean, nullable=False)
+    indexed = Column(bool, nullable=False)
     fee = Column(Integer, nullable=False)
     pool = Column(String, nullable=False)
     block_number = Column(Integer, nullable=False)
@@ -492,7 +493,8 @@ class DBManager:
             TokenPairTable(
                 token0=token_pair["token0"]["address"],
                 token1=token_pair["token1"]["address"],
-                is_stablecoin=has_stablecoin(token_pair, STABLECOINS),
+                has_stablecoin=has_stablecoin(token_pair, STABLECOINS),
+                indexed=True,
                 fee=token_pair["fee"],
                 pool=token_pair["pool_address"],
                 block_number=token_pair["block_number"],
@@ -541,8 +543,9 @@ class DBManager:
                 )
                 .join(Token0, TokenPairTable.token0 == Token0.address)
                 .join(Token1, TokenPairTable.token1 == Token1.address)
+                .filter(TokenPairTable.indexed == True)
                 .filter(TokenPairTable.completed == False)
-                .filter(TokenPairTable.is_stablecoin == True)
+                .filter(TokenPairTable.has_stablecoin == True)
                 .all()
             )
 
@@ -555,8 +558,9 @@ class DBManager:
                     )
                     .join(Token0, TokenPairTable.token0 == Token0.address)
                     .join(Token1, TokenPairTable.token1 == Token1.address)
+                    .filter(TokenPairTable.indexed == True)
                     .filter(TokenPairTable.completed == False)
-                    .filter(TokenPairTable.is_stablecoin == False)
+                    .filter(TokenPairTable.has_stablecoin == False)
                     .all()
                 )
 
@@ -566,7 +570,8 @@ class DBManager:
                     "token1": row.TokenPairTable.token1,
                     "fee": row.TokenPairTable.fee,
                     "pool_address": row.TokenPairTable.pool,
-                    "is_stablecoin": row.TokenPairTable.is_stablecoin,
+                    "has_stablecoin": row.TokenPairTable.has_stablecoin,
+                    "indexed": row.TokenPairTable.indexed,
                     "completed": row.TokenPairTable.completed,
                     "token0_decimals": row.token0_decimals,
                     "token1_decimals": row.token1_decimals,
@@ -581,13 +586,13 @@ class DBManager:
                 record = (
                     session.query(TokenPairTable)
                     .filter_by(
-                        token0=token_pair[0], token1=token_pair[1], fee=token_pair[2]
+                        token0=token_pair[0], token1=token_pair[1], fee=token_pair[2], indexed=True
                     )
                     .first()
                 )
                 if record:
                     session.query(TokenPairTable).filter_by(
-                        token0=token_pair[0], token1=token_pair[1], fee=token_pair[2]
+                        token0=token_pair[0], token1=token_pair[1], fee=token_pair[2], indexed=True
                     ).update({TokenPairTable.completed: True})
                 else:
                     return False
