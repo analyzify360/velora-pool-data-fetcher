@@ -6,27 +6,11 @@ from datetime import datetime, timezone
 import time
 import pandas as pd
 from typing import Dict, List, Union
-from utils.utils import (
-    signed_hex_to_int,
-    unsigned_hex_to_int,
-    tick_to_sqrt_price,
-    calc_prices_token0_by_token1,
-    calc_prices_token1_by_token0,
-    normalize_with_deciamls,
-    apply_abs_to_list,
-)
+from utils.utils import *
 
 TIME_INTERVAL = 10 * 60
 START_TIMESTAMP = int(datetime(2021, 5, 4).replace(tzinfo=timezone.utc).timestamp())
 DAY_SECONDS = 86400
-STABLECOINS = [
-    "0x6b175474e89094c44da98b954eedeac495271d0f",  # DAI in Ethereum Mainnet
-    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",  # USDC in Ethereum Mainnet
-    "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",  # USDC2
-    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  # USDC3
-    "0xdac17f958d2ee523a2206206994597c13d831ec7",  # USDT in Ethereum Mainnet
-]
-
 
 class PoolDataFetcher:
     def __init__(self) -> None:

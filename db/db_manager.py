@@ -317,91 +317,6 @@ class DBManager:
                     )
                 )
                 print("Hypertable 'token_metrics' created successfully.")
-                # conn.execute(text(
-                #     f"""
-                #     CREATE OR REPLACE FUNCTION fill_missing_values()
-                #     RETURNS TRIGGER AS $$
-                #     DECLARE
-                #         last_price RECORD;
-                #         last_liquidity RECORD;
-                #         last_volume RECORD;
-                #     BEGIN
-                #         -- Check and retrieve the last known price for this pool_address if NEW.price is NULL
-                #         IF NEW.price = 0.0 THEN
-                #             SELECT price
-                #             INTO last_price
-                #             FROM pool_metrics
-                #             WHERE pool_address = NEW.pool_address
-                #             AND price != 0.0
-                #             ORDER BY timestamp DESC
-                #             LIMIT 1;
-
-                #             -- Substitute 0 price with the last known price, if available
-                #             IF last_price.price != 0.0 THEN
-                #                 NEW.price := last_price.price;
-                #             END IF;
-                #         END IF;
-
-                #         -- Check and retrieve the last known liquidity for this pool_address if NEW.liquidity is 0
-                #         IF NEW.liquidity = 0 THEN
-                #             SELECT liquidity
-                #             INTO last_liquidity
-                #             FROM pool_metrics
-                #             WHERE pool_address = NEW.pool_address
-                #             AND liquidity != 0
-                #             ORDER BY timestamp DESC
-                #             LIMIT 1;
-
-                #             -- Substitute 0 liquidity with the last known liquidity, if available
-                #             IF last_liquidity.liquidity != 0 THEN
-                #                 NEW.liquidity := last_liquidity.liquidity;
-                #             END IF;
-                #         END IF;
-
-                #         -- Check and retrieve the last known volume for this pool_address if NEW.volume is 0
-                #         IF NEW.volume = 0 THEN
-                #             SELECT volume
-                #             INTO last_volume
-                #             FROM pool_metrics
-                #             WHERE pool_address = NEW.pool_address
-                #             AND volume != 0
-                #             ORDER BY timestamp DESC
-                #             LIMIT 1;
-
-                #             -- Substitute 0 volume with the last known volume, if available
-                #             IF last_volume.volume != 0 THEN
-                #                 NEW.volume := last_volume.volume;
-                #             END IF;
-                #         END IF;
-
-                #         -- Return the potentially modified NEW record
-                #         RETURN NEW;
-                #     END;
-                #     $$ LANGUAGE plpgsql;
-
-                #     """
-                # ))
-                # print("Function 'fill_missing_values' created successfully.")
-                # conn.execute(text(
-                #     f"""
-                #     DO $$
-                #     BEGIN
-                #         -- Check if the trigger already exists
-                #         IF NOT EXISTS (
-                #             SELECT 1
-                #             FROM pg_trigger
-                #             WHERE tgname = 'fill_missing_values_trigger'
-                #             AND tgrelid = 'pool_metrics'::regclass
-                #         ) THEN
-                #             -- Only create the trigger if it doesn't exist
-                #             CREATE TRIGGER fill_missing_values_trigger
-                #             BEFORE INSERT ON pool_metrics
-                #             FOR EACH ROW
-                #             EXECUTE FUNCTION fill_missing_values();
-                #         END IF;
-                #     END $$;
-                #     """
-                # ))
 
             except SQLAlchemyError as e:
                 print(f"An error occurred: {e}")
@@ -489,30 +404,38 @@ class DBManager:
         self, token_pairs: List[Dict[str, Union[str, Integer]]]
     ) -> None:
         """Add token pairs to the corresponding table."""
-        insert_values = [
-            TokenPairTable(
-                token0=token_pair["token0"]["address"],
-                token1=token_pair["token1"]["address"],
-                has_stablecoin=has_stablecoin(token_pair, STABLECOINS),
-                indexed=True,
-                fee=token_pair["fee"],
-                pool=token_pair["pool_address"],
-                block_number=token_pair["block_number"],
-                completed=False,
-            )
-            for token_pair in token_pairs
-        ]
-        self.add_tokens(
-            [
-                token
-                for token_pair in token_pairs
-                for token in [token_pair["token0"], token_pair["token1"]]
-            ]
-        )
-
         with self.Session() as session:
-            session.add_all(insert_values)
-            session.commit()
+            last_token = session.query(TokenPairTable).filter_by(pool=token_pairs[0]['pool_address']).first()
+            if last_token is None:
+                for token_pair in token_pairs:
+                    existing_token = session.query(TokenPairTable).filter_by(pool = token_pair['pool_address']).first()
+                    if existing_token:
+                        existing_token.indexed = True
+                session.commit()
+            else:
+                insert_values = [
+                    TokenPairTable(
+                        token0=token_pair["token0"]["address"],
+                        token1=token_pair["token1"]["address"],
+                        has_stablecoin=has_stablecoin(token_pair),
+                        indexed=True,
+                        fee=token_pair["fee"],
+                        pool=token_pair["pool_address"],
+                        block_number=token_pair["block_number"],
+                        completed=False,
+                    )
+                    for token_pair in token_pairs
+                ]
+                self.add_tokens(
+                    [
+                        token
+                        for token_pair in token_pairs
+                        for token in [token_pair["token0"], token_pair["token1"]]
+                    ]
+                )
+
+                session.add_all(insert_values)
+                session.commit()
 
     def fetch_token_pairs(self):
         """Fetch all token pairs from the corresponding table."""
