@@ -44,7 +44,7 @@ class TokenPairTable(Base):
     token0 = Column(String, nullable=False)
     token1 = Column(String, nullable=False)
     has_stablecoin = Column(Boolean, nullable=False)
-    indexed = Column(bool, nullable=False)
+    indexed = Column(Boolean, nullable=False)
     fee = Column(Integer, nullable=False)
     pool = Column(String, nullable=False)
     block_number = Column(Integer, nullable=False)

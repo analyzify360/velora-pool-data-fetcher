@@ -128,7 +128,7 @@ class PoolDataFetcher:
             req_pools_map[token_pair["pool_address"]] = {
                 "token0": token_pair["token0"],
                 "token1": token_pair["token1"],
-                "is_stablecoin": token_pair["is_stablecoin"],
+                "has_stablecoin": token_pair["has_stablecoin"],
                 "token0_decimals": token_pair["token0_decimals"],
                 "token1_decimals": token_pair["token1_decimals"],
             }
@@ -216,7 +216,7 @@ class PoolDataFetcher:
         """
         derived_token_metrics = {}
         for pool_map in pools_map.values():
-            if not pool_map.get("is_stablecoin"):
+            if not pool_map.get("has_stablecoin"):
                 db_token_metrics = self.db_manager.fetch_token_metrics(
                     pool_map.get("token0"), start + interval, end
                 )
