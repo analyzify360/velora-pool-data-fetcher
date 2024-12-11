@@ -405,16 +405,13 @@ class DBManager:
     ) -> None:
         """Add token pairs to the corresponding table."""
         with self.Session() as session:
-            last_token = session.query(TokenPairTable).filter_by(pool=token_pairs[0]['pool_address']).first()
-            if last_token is None:
-                for token_pair in token_pairs:
-                    existing_token = session.query(TokenPairTable).filter_by(pool = token_pair['pool_address']).first()
-                    if existing_token:
-                        existing_token.indexed = True
-                session.commit()
-            else:
-                insert_values = [
-                    TokenPairTable(
+            for token_pair in token_pairs:
+                existing_token = session.query(TokenPairTable).filter_by(pool = token_pair['pool_address']).first()
+                if existing_token:
+                    existing_token.indexed = True
+                    session.commit()
+                else:
+                    new_token_pair = TokenPairTable(
                         token0=token_pair["token0"]["address"],
                         token1=token_pair["token1"]["address"],
                         has_stablecoin=has_stablecoin(token_pair),
@@ -424,18 +421,9 @@ class DBManager:
                         block_number=token_pair["block_number"],
                         completed=False,
                     )
-                    for token_pair in token_pairs
-                ]
-                self.add_tokens(
-                    [
-                        token
-                        for token_pair in token_pairs
-                        for token in [token_pair["token0"], token_pair["token1"]]
-                    ]
-                )
-
-                session.add_all(insert_values)
-                session.commit()
+                    session.add(new_token_pair)
+                    self.add_tokens([token_pair["token0"], token_pair["token1"]])
+                    session.commit()
 
     def fetch_token_pairs(self):
         """Fetch all token pairs from the corresponding table."""
