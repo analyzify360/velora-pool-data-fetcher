@@ -37,9 +37,8 @@ class Timetable(Base):
     end = Column(Integer)
     completed = Column(Boolean)
 
-
 class TokenPairTable(Base):
-    __tablename__ = "token_pairs"
+    __tablename__ = 'token_pairs'
     id = Column(Integer, primary_key=True, autoincrement=True)
     token0 = Column(String, nullable=False)
     token1 = Column(String, nullable=False)
@@ -49,6 +48,7 @@ class TokenPairTable(Base):
     pool = Column(String, nullable=False)
     block_number = Column(Integer, nullable=False)
     completed = Column(Boolean, nullable=False)
+    last_synced_time = Column(Integer, nullable=True)
 
 
 class TokenTable(Base):
@@ -401,7 +401,7 @@ class DBManager:
             session.commit()
 
     def add_token_pairs(
-        self, token_pairs: List[Dict[str, Union[str, Integer]]]
+        self, token_pairs: List[Dict[str, Union[str, Integer]]], timestamp: int = None
     ) -> None:
         """Add token pairs to the corresponding table."""
         with self.Session() as session:
