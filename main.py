@@ -72,7 +72,7 @@ class PoolDataFetcher:
         """
         token_pairs = prob.get("token_pairs", None)
         onchain_data = answer.get("data", None)
-        pool_metrics, token_metrics, daily_pool_metrics, current_pool_metrics = metrics
+        pool_metrics, token_metrics, daily_pool_metrics, current_token_metrics = metrics
         print("saving pool data to database ...")
         self.db_manager.add_or_update_current_pool_metrics(daily_pool_metrics)
         start_time = datetime.now()
@@ -85,7 +85,6 @@ class PoolDataFetcher:
         self.db_manager.mark_token_pairs_as_complete(token_pairs)
         end_time = datetime.now()
         print("Time taken to mark token pairs as complete: ", end_time - start_time)
-        self.db_manager.add_or_update_current_token_metrics(current_pool_metrics)
         print("pool data saved successfully.")
 
     def get_next_token_pairs(self, time_range: dict) -> dict:
@@ -130,12 +129,25 @@ class PoolDataFetcher:
     ) -> Dict[str, Dict[str, Union[int, float]]]:
         """Get the current pool metrics."""
         return self.db_manager.fetch_current_pool_metrics(pool_addresses)
+    
+    def add_current_token_metrics(
+        self, token_addresses: list[str]
+    ) -> None:
+        self.db_manager.add_current_token_metrics(token_addresses)
 
     def get_current_token_metrics(
-        self, token_addresses: list[str]
+        self, token_addresses: list[str], start_time: int
     ) -> Dict[str, Dict[str, Union[int, float]]]:
         """Get the current token metrics."""
-        return self.db_manager.fetch_current_token_metrics(token_addresses)
+        return self.db_manager.fetch_current_token_metrics(token_addresses, start_time)
+    
+    def set_current_token_metrics_as_used(
+        self, token_addresses: list[str]
+    ):
+        self.db_manager.set_current_token_metrics_as_used(token_addresses)
+    
+    def set_current_token_metrics_as_unused(self):
+        self.db_manager.set_current_token_metrics_as_unused()
 
     def get_token_metrics(
         self, token_address: str, start: int, end: int
@@ -156,15 +168,14 @@ class PoolDataFetcher:
         )
         print("received answer")
         current_pool_metrics = self.get_current_pool_metrics(prob["pool_addresses"])
+        token_addresses = []
+        token_addresses.extend(
+            [ prob["pools_map"][pool_address]["token0"] for pool_address in prob["pool_addresses"] ]
+            + [ prob["pools_map"][pool_address]["token1"] for pool_address in prob["pool_addresses"] ]
+        )
+        self.add_current_token_metrics(token_addresses)
         current_token_metrics = self.get_current_token_metrics(
-            [
-                prob["pools_map"][pool_address]["token0"]
-                for pool_address in prob["pool_addresses"]
-            ]
-            + [
-                prob["pools_map"][pool_address]["token1"]
-                for pool_address in prob["pool_addresses"]
-            ]
+            token_addresses, time_range["start"]
         )
         metrics = self.generate_metrics(
             answer,
@@ -175,8 +186,8 @@ class PoolDataFetcher:
             time_range["start"],
             time_range["end"],
         )
-        print("saving data...")
         self.save_pool_and_metrics_data(prob, answer, metrics)
+        self.set_current_token_metrics_as_used(token_addresses)
 
     def generate_metrics(
         self,
@@ -714,7 +725,6 @@ class PoolDataFetcher:
                         ).get("total_liquidity_token1", 0.0),
                     }
                 )
-
         return pool_metrics, token_metrics, daily_pool_metrics, current_token_metrics
 
     def run(self):
@@ -722,6 +732,7 @@ class PoolDataFetcher:
             time_range = self.db_manager.fetch_last_time_range()
             if time_range is None or time_range["completed"]:
                 time_range = self.add_new_time_range()
+                self.set_current_token_metrics_as_unused()
 
             now = datetime.now().timestamp()
             if time_range["end"] <= now:

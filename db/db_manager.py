@@ -78,6 +78,7 @@ class CurrentTokenMetricTable(Base):
     price = Column(Float)
     total_liquidity = Column(Float)
     total_volume = Column(Float)
+    is_used = Column(Boolean)
 
 
 class SwapEventTable(Base):
@@ -820,22 +821,52 @@ class DBManager:
                     conn.commit()
             except SQLAlchemyError as e:
                 print(f"An error occurred: {e}")
-
+    def add_current_token_metrics(self, token_addresses: List[str]) -> bool:
+        with self.Session() as session:
+            for token_address in token_addresses:
+                existing_record = (
+                    session.query(CurrentTokenMetricTable)
+                    .filter_by(token_address=token_address)
+                    .first()
+                )
+                if not existing_record:
+                    new_metric = CurrentTokenMetricTable(
+                        token_address=token_address,
+                        price=0.0,
+                        total_liquidity=0.0,
+                        total_volume=0.0,
+                        is_used=False,
+                    )
+                    session.add(new_metric)
+                    session.commit()
+        
     def fetch_current_token_metrics(
-        self, token_addresses: List[str]
+        self, token_addresses: List[str], start_timestamp: int,
     ) -> Dict[str, Dict[str, Union[int, float]]]:
         """Fetch the latest token metrics."""
         with self.Session() as session:
             metrics = (
-                session.query(CurrentTokenMetricTable)
-                .filter(CurrentTokenMetricTable.token_address.in_(token_addresses))
+                session.query(TokenMetricTable)
+                .filter(TokenMetricTable.timestamp == start_timestamp)
+                .filter(TokenMetricTable.token_address.in_(token_addresses))
+                .join(CurrentTokenMetricTable, TokenMetricTable.token_address == CurrentTokenMetricTable.token_address)
+                .filter(CurrentTokenMetricTable.is_used == False)
                 .all()
             )
             return {
                 row.token_address: {
-                    "close_price": row.price,
+                    "close_price": row.close_price,
                     "total_liquidity": row.total_liquidity,
                     "total_volume": row.total_volume,
                 }
                 for row in metrics
             }
+    def set_current_token_metrics_as_used(self, token_addresses: List[str]) -> None:
+        with self.Session() as session:
+            session.query(CurrentTokenMetricTable).filter(CurrentTokenMetricTable.token_address.in_(token_addresses)).update({CurrentTokenMetricTable.is_used: True})
+            session.commit()
+    
+    def set_current_token_metrics_as_unused(self) -> None:
+        with self.Session() as session:
+            session.query(CurrentTokenMetricTable).update({CurrentTokenMetricTable.is_used: False})
+            session.commit()
