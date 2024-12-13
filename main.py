@@ -285,24 +285,14 @@ class PoolDataFetcher:
                 amount = unsigned_hex_to_int(
                     event.get("event").get("data").get("amount", "0x0")
                 )
-                tick_lower = event.get("event").get("data").get("tick_lower")
-                tick_upper = event.get("event").get("data").get("tick_upper")
-                sqrt_price_lower = tick_to_sqrt_price(tick_lower)
-                sqrt_price_upper = tick_to_sqrt_price(tick_upper)
-                liquidity_token0 = (
-                    amount
-                    * (sqrt_price_upper - sqrt_price_lower)
-                    / (sqrt_price_upper * sqrt_price_lower)
+                amount0 = unsigned_hex_to_int(
+                    event.get("event").get("data").get("amount0", "0x0")
                 )
-                liquidity_token1 = (
-                    amount * (sqrt_price_upper - sqrt_price_lower) / sqrt_price_upper
+                amount1 = unsigned_hex_to_int(
+                    event.get("event").get("data").get("amount1", "0x0")
                 )
-                event_type = event.get("event").get("type")
-                if event_type == "burn":
-                    liquidity_token0 = -liquidity_token0
-                    liquidity_token1 = -liquidity_token1
-                aggregated_data[key]["token0_liquidity"].append(liquidity_token0)
-                aggregated_data[key]["token1_liquidity"].append(liquidity_token1)
+                aggregated_data[key]["token0_liquidity"].append(amount0)
+                aggregated_data[key]["token1_liquidity"].append(amount1)
                 aggregated_data[key]["total_liquidity"].append(amount)
 
         pool_metrics = []
