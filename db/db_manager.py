@@ -17,7 +17,7 @@ from typing import Union, List, Dict
 from utils.config import get_postgres_url
 from utils.utils import has_stablecoin
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Define the base class for your table models
 Base = declarative_base()
