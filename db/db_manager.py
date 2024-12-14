@@ -86,6 +86,7 @@ class SwapEventTable(Base):
     transaction_hash = Column(String, nullable=False)
     pool_address = Column(String, nullable=False)
     block_number = Column(Integer, nullable=False)
+    timestamp = Column(Integer, nullable=False)
     sender = Column(String, nullable=False)
     to = Column(String, nullable=False)
     amount0 = Column(String, nullable=False)  # I256 can be stored as String
@@ -101,6 +102,7 @@ class MintEventTable(Base):
     transaction_hash = Column(String, nullable=False)
     pool_address = Column(String, nullable=False)
     block_number = Column(Integer, nullable=False)
+    timestamp = Column(Integer, nullable=False)
     sender = Column(String, nullable=False)
     owner = Column(String, nullable=False)
     tick_lower = Column(Integer, nullable=False)  # int24 can be stored as Integer
@@ -116,6 +118,7 @@ class BurnEventTable(Base):
     transaction_hash = Column(String, nullable=False)
     pool_address = Column(String, nullable=False)
     block_number = Column(Integer, nullable=False)
+    timestamp = Column(Integer, nullable=False)
     owner = Column(String, nullable=False)
     tick_lower = Column(Integer, nullable=False)  # int24 can be stored as Integer
     tick_upper = Column(Integer, nullable=False)  # int24 can be stored as Integer
@@ -130,6 +133,7 @@ class CollectEventTable(Base):
     transaction_hash = Column(String, nullable=False)
     pool_address = Column(String, nullable=False)
     block_number = Column(Integer, nullable=False)
+    timestamp = Column(Integer, nullable=False)
     owner = Column(String, nullable=False)
     recipient = Column(String, nullable=False)
     tick_lower = Column(Integer, nullable=False)  # int24 can be stored as Integer
@@ -532,6 +536,7 @@ class DBManager:
                         transaction_hash=data["transaction_hash"],
                         pool_address=data["pool_address"],
                         block_number=data["block_number"],
+                        timestamp=data["timestamp"],
                         **data["event"]["data"],
                     )
                     for data in pool_data
@@ -546,6 +551,7 @@ class DBManager:
                         transaction_hash=data["transaction_hash"],
                         pool_address=data["pool_address"],
                         block_number=data["block_number"],
+                        timestamp=data["timestamp"],
                         **data["event"]["data"],
                     )
                     for data in pool_data
@@ -560,6 +566,7 @@ class DBManager:
                         transaction_hash=data["transaction_hash"],
                         pool_address=data["pool_address"],
                         block_number=data["block_number"],
+                        timestamp=data["timestamp"],
                         **data["event"]["data"],
                     )
                     for data in pool_data
@@ -574,6 +581,7 @@ class DBManager:
                         transaction_hash=data["transaction_hash"],
                         pool_address=data["pool_address"],
                         block_number=data["block_number"],
+                        timestamp=data["timestamp"],
                         **data["event"]["data"],
                     )
                     for data in pool_data
