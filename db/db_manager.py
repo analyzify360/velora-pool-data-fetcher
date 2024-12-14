@@ -853,7 +853,7 @@ class DBManager:
                 .filter(CurrentTokenMetricTable.is_used == False)
                 .all()
             )
-            return {
+            result = {
                 row.token_address: {
                     "close_price": row.close_price,
                     "total_liquidity": row.total_liquidity,
@@ -861,6 +861,9 @@ class DBManager:
                 }
                 for row in metrics
             }
+            self.add_or_update_current_token_metrics(result)
+            return result
+        
     def set_current_token_metrics_as_used(self, token_addresses: List[str]) -> None:
         with self.Session() as session:
             session.query(CurrentTokenMetricTable).filter(CurrentTokenMetricTable.token_address.in_(token_addresses)).update({CurrentTokenMetricTable.is_used: True})
