@@ -28,6 +28,8 @@ STABLECOINS = [
     "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  # USDC3
     "0xdac17f958d2ee523a2206206994597c13d831ec7",  # USDT in Ethereum Mainnet
 ]
+
+START_TIMESTAMP = int(datetime(2021, 5, 4).replace(tzinfo=timezone.utc).timestamp())
 # Define the timetable table
 class Timetable(Base):
     __tablename__ = "timetable"
@@ -401,7 +403,7 @@ class DBManager:
             session.commit()
 
     def add_token_pairs(
-        self, token_pairs: List[Dict[str, Union[str, Integer]]], timestamp: int = None
+        self, token_pairs: List[Dict[str, Union[str, Integer]]], timestamp: int = START_TIMESTAMP
     ) -> None:
         """Add token pairs to the corresponding table."""
         with self.Session() as session:
@@ -420,6 +422,7 @@ class DBManager:
                         pool=token_pair["pool_address"],
                         block_number=token_pair["block_number"],
                         completed=False,
+                        last_synced_time=timestamp
                     )
                     session.add(new_token_pair)
                     self.add_tokens([token_pair["token0"], token_pair["token1"]])
