@@ -159,7 +159,6 @@ class TokenMetricTable(Base):
     timestamp = Column(Integer, nullable=False, primary_key=True)
     token_address = Column(String, nullable=False, primary_key=True)
 
-    open_price = Column(Float)
     close_price = Column(Float)
     high_price = Column(Float)
     low_price = Column(Float)
