@@ -7,15 +7,18 @@ import time
 import pandas as pd
 from typing import Dict, List, Union
 from utils.utils import *
+from utils.log import Logger
 
 TIME_INTERVAL = 10 * 60
 START_TIMESTAMP = int(datetime(2021, 5, 4).replace(tzinfo=timezone.utc).timestamp())
 DAY_SECONDS = 86400
+ESP = 1e-9
 
 class PoolDataFetcher:
     def __init__(self) -> None:
         self.db_manager = DBManager()
         self.uniswap_fetcher = UniswapFetcher(os.getenv("ETHEREUM_RPC_NODE_URL"))
+        self.logger = Logger("PoolDataFetcher")
 
     def add_new_time_range(self) -> None:
         """
@@ -28,10 +31,10 @@ class PoolDataFetcher:
         else:
             start = last_time_range["end"]
             end = last_time_range["end"] + DAY_SECONDS
-        print(f"Adding new timetable entry between {start} and {end}")
+        self.logger.log_info(f"Adding new timetable entry between {start} and {end}")
         self.db_manager.add_timetable_entry(start, end)
 
-        print(f"Fetching token pairs between {start} and {end}")
+        self.logger.log_info(f"Fetching token pairs between {start} and {end}")
 
         token_pairs = (
             self.uniswap_fetcher.get_pool_created_events_between_two_timestamps(
@@ -73,19 +76,12 @@ class PoolDataFetcher:
         token_pairs = prob.get("token_pairs", None)
         onchain_data = answer.get("data", None)
         pool_metrics, token_metrics, daily_pool_metrics, current_token_metrics = metrics
-        print("saving pool data to database ...")
+        self.logger.log_info("saving pool data to database ...")
         self.db_manager.add_or_update_current_pool_metrics(daily_pool_metrics)
-        start_time = datetime.now()
         self.db_manager.add_pool_event_and_metrics_data(onchain_data, pool_metrics)
-        end_time = datetime.now()
-        print("Time taken to save pool data: ", end_time - start_time)
         self.db_manager.add_or_update_token_metrics(token_metrics)
-        end_time = datetime.now()
-        print("Time taken to save token metrics: ", end_time - start_time)
         self.db_manager.mark_token_pairs_as_complete(token_pairs)
-        end_time = datetime.now()
-        print("Time taken to mark token pairs as complete: ", end_time - start_time)
-        print("pool data saved successfully.")
+        self.logger.log_info("pool data saved successfully.")
 
     def get_next_token_pairs(self, time_range: dict) -> dict:
         """
@@ -156,17 +152,16 @@ class PoolDataFetcher:
         return self.db_manager.fetch_token_metrics(token_address, start, end)
 
     def process_time_range(self, time_range: dict):
-        print(
+        self.logger.log_info(
             f'Processing time range between {time_range["start"]} and {time_range["end"]}'
         )
         prob = self.get_next_token_pairs(time_range)
         if prob is None:
             return None
-        print(f"querying uniswap_fetcher with problem: {prob}")
+        self.logger.log_info(f"querying uniswap_fetcher with problem: {prob['pool_addresses']}")
         answer = self.uniswap_fetcher.fetch_pool_data(
             prob["token_pairs"], prob["start_datetime"], prob["end_datetime"]
         )
-        print("received answer")
         current_pool_metrics = self.get_current_pool_metrics(prob["pool_addresses"])
         token_addresses = []
         token_addresses.extend(
@@ -273,8 +268,6 @@ class PoolDataFetcher:
                 aggregated_data[key]["amount1"] = []
                 aggregated_data[key]["sqrt_price_x96"] = []
                 aggregated_data[key]["type"] = None
-        # print(f'printing aggregated data: {aggregated_data}')
-        # print(f"daily_pool_metrics: {daily_pool_metrics}")
         for event in data:
             round_timestamp = event.get("timestamp") // interval * interval + interval
             pool_address = event.get("pool_address")
@@ -552,7 +545,7 @@ class PoolDataFetcher:
                 price_token1 = derived_token_metrics.get(token1_address, {}).get(
                     timestamp, None
                 )
-                if not price_token0 or not price_token1:
+                if price_token0 is None and price_token1 is None:
                     continue
 
                 if len(prices_ratio_token0) == 0:
@@ -567,9 +560,9 @@ class PoolDataFetcher:
                 close_price_token0 = 0.0
                 close_price_token1 = 0.0
                 if price_token0 and not price_token1:
-                    close_price_token1 = price_token0 / prices_ratio_token0[-1]
-                    high_price_token1 = price_token0 / min(prices_ratio_token0)
-                    low_price_token1 = price_token0 / max(prices_ratio_token0)
+                    close_price_token1 = price_token0 / (prices_ratio_token0[-1] + ESP)
+                    high_price_token1 = price_token0 / (min(prices_ratio_token0) + ESP)
+                    low_price_token1 = price_token0 / (max(prices_ratio_token0) + ESP)
                     is_token1_derived = False
 
                 elif price_token1 and not price_token0:
@@ -592,7 +585,7 @@ class PoolDataFetcher:
                     )
                 else:
                     current_token_metrics[token0_address] = {
-                        "close_price": price_token0,
+                        "close_price": close_price_token0,
                         "total_volume": volume_token0,
                         "total_liquidity": liquidity_token0,
                     }
@@ -611,7 +604,7 @@ class PoolDataFetcher:
                     )
                 else:
                     current_token_metrics[token1_address] = {
-                        "close_price": price_token1,
+                        "close_price": close_price_token1,
                         "total_volume": volume_token1,
                         "total_liquidity": liquidity_token1,
                     }
@@ -621,6 +614,15 @@ class PoolDataFetcher:
                         {
                             "token_address": token0_address,
                             "timestamp": timestamp,
+                            "close_price": current_token_metrics[token0_address][
+                                "close_price"
+                            ],
+                            "high_price": current_token_metrics[token0_address][
+                                "close_price"
+                            ],
+                            "low_price": current_token_metrics[token0_address][
+                                "close_price"
+                            ],
                             "total_volume": current_token_metrics[token0_address][
                                 "total_volume"
                             ],
@@ -653,12 +655,20 @@ class PoolDataFetcher:
                             "is_derived": False,
                         }
                     )
-
                 if is_token1_derived:
                     token_metrics.append(
                         {
                             "token_address": token1_address,
                             "timestamp": timestamp,
+                            "close_price": current_token_metrics[token1_address][
+                                "close_price"
+                            ],
+                            "high_price": current_token_metrics[token1_address][
+                                "close_price"
+                            ],
+                            "low_price": current_token_metrics[token1_address][
+                                "close_price"
+                            ],
                             "total_volume": current_token_metrics[token1_address][
                                 "total_volume"
                             ],

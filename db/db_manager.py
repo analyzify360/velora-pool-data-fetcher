@@ -9,13 +9,16 @@ from sqlalchemy import (
     inspect,
     text,
     UniqueConstraint,
+    Index,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, aliased
 from sqlalchemy.exc import SQLAlchemyError, OperationalError, ProgrammingError
+from sqlalchemy.dialects.postgresql import insert
 from typing import Union, List, Dict
 from utils.config import get_postgres_url
 from utils.utils import has_stablecoin
+from utils.log import Logger
 
 from datetime import datetime, timezone
 
@@ -75,9 +78,9 @@ class CurrentPoolMetricTable(Base):
 class CurrentTokenMetricTable(Base):
     __tablename__ = "current_token_metrics"
     token_address = Column(String, primary_key=True)
-    price = Column(Float)
-    total_liquidity = Column(Float)
-    total_volume = Column(Float)
+    price = Column(Float, default=0.0)
+    total_liquidity = Column(Float, default=0.0)
+    total_volume = Column(Float, default=0.0)
     is_used = Column(Boolean)
 
 
@@ -145,13 +148,20 @@ class CollectEventTable(Base):
 
 class PoolMetricTable(Base):
     __tablename__ = "pool_metrics"
-    timestamp = Column(Integer, nullable=False, primary_key=True)
-    pool_address = Column(String, nullable=False, primary_key=True)
-    price = Column(Float)
-    liquidity_token0 = Column(Float)
-    liquidity_token1 = Column(Float)
-    volume_token0 = Column(Float)
-    volume_token1 = Column(Float)
+
+    # id = Column(Integer, autoincrement=True)  # Surrogate unique ID
+    timestamp = Column(Integer, primary_key=True, nullable=False)  # Time-based column for partitioning
+    pool_address = Column(String, primary_key=True, nullable=False)  # Pool address
+    price = Column(Float, default=0.0)
+    liquidity_token0 = Column(Float, default=0.0)
+    liquidity_token1 = Column(Float, default=0.0)
+    volume_token0 = Column(Float, default=0.0)
+    volume_token1 = Column(Float, default=0.0)
+
+    # Define a unique index to ensure uniqueness
+    __table_args__ = (
+        Index("idx_unique_timestamp_pool", "timestamp", "pool_address", unique=True),
+    )
 
 
 class TokenMetricTable(Base):
@@ -159,15 +169,20 @@ class TokenMetricTable(Base):
     timestamp = Column(Integer, nullable=False, primary_key=True)
     token_address = Column(String, nullable=False, primary_key=True)
 
-    close_price = Column(Float)
-    high_price = Column(Float)
-    low_price = Column(Float)
-    total_volume = Column(Float)
-    total_liquidity = Column(Float)
+    close_price = Column(Float, default=0.0)
+    high_price = Column(Float, default=0.0)
+    low_price = Column(Float, default=0.0)
+    total_volume = Column(Float, default=0.0)
+    total_liquidity = Column(Float, default=0.0)
+    
+    __table_args__ = (
+        Index("idx_token_timestamp", "timestamp", "token_address", unique=True),
+    )
 
 
 class DBManager:
     def __init__(self, url=get_postgres_url()) -> None:
+        self.logger = Logger("DBManager")
         # Create the SQLAlchemy engine
         self.engine = create_engine(url)
 
@@ -180,6 +195,7 @@ class DBManager:
 
         # Enable TimescaleDB and convert specific tables to hypertables
         self.create_hypertables()
+        
 
     def initialize_database(self):
         try:
@@ -199,11 +215,11 @@ class DBManager:
                                     )
                                     conn.commit()
                             except ProgrammingError as e:
-                                print(f"Failed to drop table {table_name}: {e}")
+                                self.logger.log_error(f"Failed to drop table {table_name}: {e}")
 
                 Base.metadata.create_all(self.engine)
         except OperationalError as e:
-            print(f"Database connection error: {e}")
+            self.logger.log_error(f"Database connection error: {e}")
             raise
 
     def compare_schemas(self, engine):
@@ -213,7 +229,7 @@ class DBManager:
 
         existing_tables = set(metadata.tables.keys())
         model_tables = set(Base.metadata.tables.keys())
-        print("compare_schemas start")
+        self.logger.log_info("compare_schemas start")
         # Compare table names
         if not model_tables <= existing_tables:
             return False
@@ -263,9 +279,9 @@ class DBManager:
                     conn.execute(
                         text("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;")
                     )
-                    print("TimescaleDB extension created successfully.")
+                    self.logger.log_info("TimescaleDB extension created successfully.")
                 else:
-                    print("TimescaleDB extension already exists.")
+                    self.logger.log_info("TimescaleDB extension already exists.")
 
                 # Check if hypertable is enabled
                 result = conn.execute(
@@ -288,9 +304,9 @@ class DBManager:
                                 f"SELECT create_hypertable('{table}', 'id', if_not_exists => TRUE, migrate_data => true);"
                             )
                         )
-                        print(f"Hypertable '{table}' created successfully.")
+                        self.logger.log_info(f"Hypertable '{table}' created successfully.")
                     else:
-                        print(f"Hypertable '{table}' already exists.")
+                        self.logger.log_info(f"Hypertable '{table}' already exists.")
                 conn.execute(
                     text(
                         """
@@ -299,14 +315,14 @@ class DBManager:
                         'timestamp',
                         'pool_address',
                         if_not_exists => TRUE, 
-                        migrate_data => true, 
+                        migrate_data => TRUE, 
                         chunk_time_interval => 86400,
                         number_partitions => 6000
                     );
                     """
                     )
                 )
-                print("Hypertable 'pool_metrics' created successfully.")
+                self.logger.log_info("Hypertable 'pool_metrics' created successfully.")
                 conn.execute(
                     text(
                         """
@@ -322,10 +338,10 @@ class DBManager:
                     """
                     )
                 )
-                print("Hypertable 'token_metrics' created successfully.")
+                self.logger.log_info("Hypertable 'token_metrics' created successfully.")
 
             except SQLAlchemyError as e:
-                print(f"An error occurred: {e}")
+                self.logger.log_error(f"An error occurred: {e}")
 
     def __enter__(self):
         self.session = self.Session()
@@ -593,67 +609,103 @@ class DBManager:
                 # Add Pool Metrics
                 # last_metrics = session.query(DailyPoolMetricTable).filter(DailyPoolMetricTable.pool_address.in_([metric['pool_address'] for metric in pool_metrics])).all()
                 # last_metrics = {metric.pool_address: metric for metric in last_metrics} if last_metrics else {} # Convert to dict for easy access
-                batch_size = 10
+                # batch_size = 10
+                # for i in range(0, len(pool_metrics), batch_size):
+                #     batch = pool_metrics[i : i + batch_size]
+                #     for metric in batch:
+                #         existing_record = (
+                #             session.query(PoolMetricTable)
+                #             .filter_by(
+                #                 timestamp=metric["timestamp"],
+                #                 pool_address=metric["pool_address"],
+                #             )
+                #             .first()
+                #         )
+
+                #         if existing_record:
+                #             # Update existing record
+                #             existing_record.price = (
+                #                 metric["price"]
+                #                 if metric["price"] != 0.0
+                #                 else existing_record.price
+                #             )
+                #             existing_record.liquidity_token0 = (
+                #                 existing_record.liquidity_token0
+                #                 + metric["liquidity_token0"]
+                #                 if metric["liquidity_token0"] != 0.0
+                #                 else existing_record.liquidity_token0
+                #             )
+                #             existing_record.liquidity_token1 = (
+                #                 existing_record.liquidity_token1
+                #                 + metric["liquidity_token1"]
+                #                 if metric["liquidity_token1"] != 0.0
+                #                 else existing_record.liquidity_token1
+                #             )
+                #             existing_record.volume_token0 = (
+                #                 existing_record.volume_token0 + metric["volume_token0"]
+                #                 if metric["volume_token0"] != 0.0
+                #                 else existing_record.volume_token0
+                #             )
+                #             existing_record.volume_token1 = (
+                #                 existing_record.volume_token1 + metric["volume_token1"]
+                #                 if metric["volume_token1"] != 0.0
+                #                 else existing_record.volume_token1
+                #             )
+                #         else:
+                #             # Insert new record
+                #             new_metric = PoolMetricTable(
+                #                 timestamp=metric["timestamp"],
+                #                 pool_address=metric["pool_address"],
+                #                 price=metric["price"],
+                #                 liquidity_token0=metric["liquidity_token0"],
+                #                 liquidity_token1=metric["liquidity_token1"],
+                #                 volume_token0=metric["volume_token0"],
+                #                 volume_token1=metric["volume_token1"],
+                #             )
+                #             session.add(new_metric)
+                batch_size = 100  # Increase the batch size for better efficiency
+
                 for i in range(0, len(pool_metrics), batch_size):
                     batch = pool_metrics[i : i + batch_size]
+
+                    # Prepare a list of upsert operations using SQLAlchemy's 'insert' with 'on_conflict_do_update'
+                    upsert_data = []
                     for metric in batch:
-                        existing_record = (
-                            session.query(PoolMetricTable)
-                            .filter_by(
-                                timestamp=metric["timestamp"],
-                                pool_address=metric["pool_address"],
-                            )
-                            .first()
+                        upsert_data.append(
+                            {
+                                "timestamp": metric["timestamp"],
+                                "pool_address": metric["pool_address"],
+                                "price": metric["price"],
+                                "liquidity_token0": metric["liquidity_token0"],
+                                "liquidity_token1": metric["liquidity_token1"],
+                                "volume_token0": metric["volume_token0"],
+                                "volume_token1": metric["volume_token1"],
+                            }
                         )
 
-                        if existing_record:
-                            # Update existing record
-                            existing_record.price = (
-                                metric["price"]
-                                if metric["price"] != 0.0
-                                else existing_record.price
-                            )
-                            existing_record.liquidity_token0 = (
-                                existing_record.liquidity_token0
-                                + metric["liquidity_token0"]
-                                if metric["liquidity_token0"] != 0.0
-                                else existing_record.liquidity_token0
-                            )
-                            existing_record.liquidity_token1 = (
-                                existing_record.liquidity_token1
-                                + metric["liquidity_token1"]
-                                if metric["liquidity_token1"] != 0.0
-                                else existing_record.liquidity_token1
-                            )
-                            existing_record.volume_token0 = (
-                                existing_record.volume_token0 + metric["volume_token0"]
-                                if metric["volume_token0"] != 0.0
-                                else existing_record.volume_token0
-                            )
-                            existing_record.volume_token1 = (
-                                existing_record.volume_token1 + metric["volume_token1"]
-                                if metric["volume_token1"] != 0.0
-                                else existing_record.volume_token1
-                            )
-                        else:
-                            # Insert new record
-                            new_metric = PoolMetricTable(
-                                timestamp=metric["timestamp"],
-                                pool_address=metric["pool_address"],
-                                price=metric["price"],
-                                liquidity_token0=metric["liquidity_token0"],
-                                liquidity_token1=metric["liquidity_token1"],
-                                volume_token0=metric["volume_token0"],
-                                volume_token1=metric["volume_token1"],
-                            )
-                            session.add(new_metric)
+                    # Perform an upsert (insert or update on conflict)
+                    stmt = insert(PoolMetricTable).values(upsert_data)
 
+                    # Handle conflicts: Update values if the record already exists
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=["timestamp", "pool_address"],
+                        set_={
+                            "price": stmt.excluded.price,
+                            "liquidity_token0": PoolMetricTable.liquidity_token0 + stmt.excluded.liquidity_token0,
+                            "liquidity_token1": PoolMetricTable.liquidity_token1 + stmt.excluded.liquidity_token1,
+                            "volume_token0": PoolMetricTable.volume_token0 + stmt.excluded.volume_token0,
+                            "volume_token1": PoolMetricTable.volume_token1 + stmt.excluded.volume_token1,
+                        },
+                    )
+
+                    # Execute the statement as a batch
+                    session.execute(stmt)
                 # Commit the transaction if all operations succeed
                 session.commit()
 
             except SQLAlchemyError as e:
                 session.rollback()
-                print(f"An error occurred: {e}")
+                self.logger.log_error(f"An error occurred: {e}")
 
     def add_token_metrics(self, metrics: List[Dict]) -> None:
         """Add or update token metrics."""
@@ -676,60 +728,51 @@ class DBManager:
                     session.commit()
             except SQLAlchemyError as e:
                 session.rollback()
-                print(f"An error occurred: {e}")
+                self.logger.log_error(f"An error occurred: {e}")
 
     def add_or_update_token_metrics(self, metrics: List[Dict]) -> None:
         """Add or update token metrics based on the is_derived field."""
         with self.Session() as session:
             try:
+                # if not metrics:
+                #     return
+                # Prepare a list of upsert data
+                upsert_data = []
                 for metric in metrics:
-                    existing_record = (
-                        session.query(TokenMetricTable)
-                        .filter_by(
-                            timestamp=metric["timestamp"],
-                            token_address=metric["token_address"],
-                        )
-                        .first()
+                    upsert_data.append(
+                        {
+                            "timestamp": metric["timestamp"],
+                            "token_address": metric["token_address"],
+                            "close_price": metric["close_price"],
+                            "high_price": metric["high_price"],
+                            "low_price": metric["low_price"],
+                            "total_volume": metric["total_volume"],
+                            "total_liquidity": metric["total_liquidity"],
+                        }
                     )
+                # Perform batch upsert using `insert` and `on_conflict_do_update`
+                stmt = insert(TokenMetricTable).values(upsert_data)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["timestamp", "token_address"],  # Conflict resolution on composite key
+                    set_={
+                        # For derived metrics
+                        "close_price": stmt.excluded.close_price,
+                        "high_price": stmt.excluded.high_price,
+                        "low_price": stmt.excluded.low_price,
+                        # Aggregation logic
+                        "total_volume": TokenMetricTable.total_volume + stmt.excluded.total_volume,
+                        "total_liquidity": TokenMetricTable.total_liquidity + stmt.excluded.total_liquidity,
+                    },
+                )
 
-                    if metric.get("is_derived", False):
-                        if not existing_record:
-                            new_metric = TokenMetricTable(
-                                timestamp=metric["timestamp"],
-                                token_address=metric["token_address"],
-                                close_price=metric["close_price"],
-                                high_price=metric["high_price"],
-                                low_price=metric["low_price"],
-                                total_volume=metric["total_volume"],
-                                total_liquidity=metric["total_liquidity"],
-                            )
-                            session.add(new_metric)
-                        else:
-                            # existing_record.close_price = existing_record.close_price + metric['close_price'] / 2
-                            # existing_record.high_price = metric['high_price'] if metric['high_price'] > existing_record.high_price else existing_record.high_price
-                            # existing_record.low_price = metric['low_price'] if metric['low_price'] < existing_record.low_price else existing_record.low_price
-                            existing_record.total_volume += metric["total_volume"]
-                            existing_record.total_liquidity += metric["total_liquidity"]
-                    else:
-                        if existing_record:
-                            existing_record.total_volume += metric["total_volume"]
-                            existing_record.total_liquidity += metric["total_liquidity"]
-                        else:
-                            new_metric = TokenMetricTable(
-                                timestamp=metric["timestamp"],
-                                token_address=metric["token_address"],
-                                close_price=metric["close_price"],
-                                high_price=metric["high_price"],
-                                low_price=metric["low_price"],
-                                total_volume=metric["total_volume"],
-                                total_liquidity=metric["total_liquidity"],
-                            )
-                            session.add(new_metric)
-
+                # Execute the statement
+                session.execute(stmt)
                 session.commit()
+
             except SQLAlchemyError as e:
                 session.rollback()
-                print(f"An error occurred: {e}")
+                self.logger.log_error(f"An error occurred: {e}")
+                raise Exception(f"metrics: {metrics}")
 
     def add_or_update_current_pool_metrics(self, metrics: dict) -> None:
         """Add or update daily metrics."""
@@ -753,7 +796,7 @@ class DBManager:
                     )
                     conn.commit()
             except SQLAlchemyError as e:
-                print(f"An error occurred: {e}")
+                self.logger.log_error(f"An error occurred: {e}")
 
     def fetch_current_pool_metrics(
         self, pool_addresses: List[str]
@@ -819,7 +862,7 @@ class DBManager:
                     )
                     conn.commit()
             except SQLAlchemyError as e:
-                print(f"An error occurred: {e}")
+                self.logger.log_error(f"An error occurred: {e}")
     def add_current_token_metrics(self, token_addresses: List[str]) -> bool:
         with self.Session() as session:
             for token_address in token_addresses:
