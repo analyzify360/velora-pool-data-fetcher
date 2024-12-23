@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 def get_postgres_url():
     """
     Get the PostgreSQL connection URL.
