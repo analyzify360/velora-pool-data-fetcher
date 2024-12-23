@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 STABLECOINS = [
     "0x6b175474e89094c44da98b954eedeac495271d0f",  # DAI in Ethereum Mainnet
     "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",  # USDC in Ethereum Mainnet
@@ -32,6 +34,22 @@ def tick_to_sqrt_price(tick: int) -> float:
     """Convert a tick to the square root price"""
     return 1.0001 ** (tick / 2)
 
+def calc_price(token0_amount: int, token1_amount: int, token0_decimals: int, token1_decimals: int) -> float:
+    """Calculate the price of token0 in token1"""
+    return float(token1_amount) / float(token0_amount) * 10 ** (token0_decimals - token1_decimals)
+def calc_price_sqrt_base(
+    sqrt_price: str, token0_decimals: int, token1_decimals: int
+) -> list[float]:
+    """Calculate the price of token0 in token1"""
+    if sqrt_price.startswith("0x"):
+        price = (float(unsigned_hex_to_int(sqrt_price)) / 2**96) ** 2 * 10 ** (
+            token0_decimals - token1_decimals
+        )
+    else:
+        price = (float(sqrt_price) / 2**96) ** 2 * 10 ** (
+            token0_decimals - token1_decimals
+        )
+    return price
 
 def calc_prices_token0_by_token1(
     sqrt_prices: list[str], token0_decimals: int, token1_decimals: int
@@ -80,7 +98,13 @@ def normalize_with_deciamls(value: int, token_decimals: int) -> float:
     """Calculate the value with removing the decimals"""
     return float(value) / 10**token_decimals
 
+def timestamp_to_date(timestamp: int, date_format: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """Convert a timestamp to a date"""
+    return datetime.fromtimestamp(timestamp, timezone.utc).strftime(date_format)
 
 if __name__ == "__main__":
-    print(calc_prices_token0_by_token1(["0x3ea65739993c6d86c200d"], 6, 6))
+    print((signed_hex_to_int("0xb1a2bc2ec50000")) / signed_hex_to_int("0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffff64c3368") * 10 ** (6 - 18))
+    print((unsigned_hex_to_int("0xfffd8963efd1fc6a506488495d951d5263988d25") / 2**96) ** 2 * 10 ** -18)
+    print(calc_price_sqrt_base("0xfffd8963efd1fc6a506488495d951d5263988d25", 18, 18))
     print(calc_prices_token1_by_token0(["0x3ea65739993c6d86c200d"], 6, 6))
+    print(unsigned_hex_to_int("0xfffd8963efd1fc6a506488495d951d5263988d25"))
